@@ -100,11 +100,12 @@
           <h1>Plan your day</h1>
           <p class="sub"></em></p>
         </div>
-        <div class="row">
+        <div class="row" id="headerControls">
           <label for="handMode" class="sub">Hand</label>
           <select id="handMode" title="Choose how the hand spins">
             <option value="day24" selected>24h day hand</option>
           </select>
+          <button id="signOutBtn" type="button" aria-label="Sign out">Sign out</button>
         </div>
       </div>
 
@@ -581,6 +582,7 @@
     render();
   };
   document.getElementById("handMode").onchange = () => renderChart();
+  document.getElementById('signOutBtn').onclick = signOut;
 
   // ===== Init: require auth, try cloud load, then render once
   (async function init(){
@@ -588,6 +590,18 @@
     const gotCloud = await loadRemote(); // may set blocks from Supabase
     render(); // render with whichever data we have (cloud if found, else local)
   })();
+async function signOut() {
+  const btn = document.getElementById('signOutBtn');
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = 'Signing out…'; }
+    await supabase.auth.signOut();
+    location.href = LOGIN_URL;
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Sign out'; }
+    alert('Could not sign out: ' + (e?.message || e));
+  }
+}
+
 </script>
 </body>
 </html>
