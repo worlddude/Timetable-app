@@ -275,23 +275,26 @@
     const ringWidth = rOuter - rInner;
 
     // Minute ticks
-    const minuteLen = Math.max(4, ringWidth * 0.28);
-    for (let i = 0; i < 60; i++) {
-      const a = -Math.PI/2 + (i/60)*TAU;
-      const r1 = rOuter - minuteLen;
-      const r2 = rOuter - 2;
-      const x1 = cx + r1*Math.cos(a), y1 = cy + r1*Math.sin(a);
-      const x2 = cx + r2*Math.cos(a), y2 = cy + r2*Math.sin(a);
-      const line = document.createElementNS(svg.namespaceURI, "line");
-      line.setAttribute("x1", x1); line.setAttribute("y1", y1);
-      line.setAttribute("x2", x2); line.setAttribute("y2", y2);
-      line.setAttribute("stroke", "var(--tick)");
-      line.setAttribute("stroke-width", 1);
-      line.setAttribute("stroke-linecap", "round");
-      line.setAttribute("opacity", "0.35");
-      svg.appendChild(line);
+    const minorLen = Math.max(4, (rOuter - rInner) * 0.28);
+    
+    if (faceMode === "24") {
+      for (let h = 0; h < 24; h++) {
+        const a = -Math.PI/2 + ((h + 0.5) / 24) * TAU;
+        const r1 = rOuter - minorLen;
+        const r2 = rOuter - 2;
+        const x1 = cx + r1*Math.cos(a), y1 = cy + r1*Math.sin(a);
+        const x2 = cx + r2*Math.cos(a), y2 = cy + r2*Math.sin(a);
+        const line = document.createElementNS(svg.namespaceURI, "line");
+        line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+        line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+        line.setAttribute("stroke", "var(--tick)");
+        line.setAttribute("stroke-width", 1);
+        line.setAttribute("stroke-linecap", "round");
+        line.setAttribute("opacity", "0.35");
+        svg.appendChild(line);
+      }
     }
-
+    
     // Hour ticks + numerals (24h used)
     const midR = (rInner + rOuter) / 2;
     const longLen = Math.max(10, ringWidth * 0.60);
