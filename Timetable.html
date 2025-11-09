@@ -279,6 +279,42 @@
     return (h?`${h}h`:"") + (m?`${h?" ":""}${m}m`:(h?"":"0m"));
   }
 
+  // ---- 24h-only time input helper (adds no new CSS) ----
+  function makeTimeInput(initial, onCommit){
+    const el = document.createElement('input');
+    el.type = 'text';
+    el.inputMode = 'numeric';
+    el.autocomplete = 'off';
+    el.spellcheck = false;
+    el.placeholder = 'HH:MM';
+    el.value = initial || '';
+    let lastValid = (parseHHMM(el.value) !== null) ? el.value : '';
+
+    el.addEventListener('input', () => {
+      const digits = el.value.replace(/\D/g, '').slice(0, 4);
+      el.value = (digits.length >= 3)
+        ? digits.slice(0,2) + ':' + digits.slice(2)
+        : digits;
+    });
+
+    el.addEventListener('blur', () => {
+      const mins = parseHHMM(el.value);
+      if (mins === null) {
+        const fallback = lastValid || (initial || '08:00');
+        el.value = fallback;
+        onCommit(fallback);
+      } else {
+        const hhmm = fmtHHMM(mins);
+        el.value = hhmm;
+        lastValid = hhmm;
+        onCommit(hhmm);
+      }
+      render();
+    });
+
+    return el;
+  }
+
   // Save locally for THIS USER + queue remote sync
   function save(){
     if (CURRENT_UID) {
@@ -586,19 +622,11 @@
       tdLabel.appendChild(inLabel);
 
       const tdStart = document.createElement("td");
-      const inStart = document.createElement("input");
-      inStart.type = "time";
-      inStart.value = b.start || "08:00";
-      inStart.step = 60;
-      inStart.onchange = () => { b.start = inStart.value; render(); };
+      const inStart = makeTimeInput(b.start || "08:00", (val) => { b.start = val; });
       tdStart.appendChild(inStart);
 
       const tdEnd = document.createElement("td");
-      const inEnd = document.createElement("input");
-      inEnd.type = "time";
-      inEnd.value = b.end || "09:00";
-      inEnd.step = 60;
-      inEnd.onchange = () => { b.end = inEnd.value; render(); };
+      const inEnd = makeTimeInput(b.end || "09:00", (val) => { b.end = val; });
       tdEnd.appendChild(inEnd);
 
       const tdMin = document.createElement("td");
