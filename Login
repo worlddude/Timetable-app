@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sign in</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root { --bg:#0f1221; --card:#14182b; --text:#e8ebff; --muted:#b9c0ff; --accent:#7c82ff; }
+  html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+  .wrap{max-width:440px;margin:8vh auto;background:var(--card);padding:24px;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.4),inset 0 0 0 1px rgba(255,255,255,.05)}
+  h1{margin:0 0 6px;font-size:22px} .sub{color:var(--muted);margin:0 0 16px}
+  label{font-weight:600;font-size:12px;color:var(--muted)}
+  input{width:100%;padding:10px 12px;margin-top:6px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:var(--text)}
+  .row{display:flex;gap:10px;margin-top:12px}
+  button{flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:var(--text);font-weight:700;cursor:pointer}
+  .primary{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 6px 16px rgba(124,130,255,.35)}
+  .msg{font-size:12px;color:var(--muted);margin-top:12px;min-height:1.2em}
+</style>
+<body>
+  <div class="wrap">
+    <h1>Sign in</h1>
+    <p class="sub">Use email & password. New here? Click “Sign up”.</p>
+
+    <label>Email</label>
+    <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
+
+    <label style="margin-top:12px">Password</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+
+    <div class="row">
+      <button id="signup" class="primary" type="button">Sign up</button>
+      <button id="signin" type="button">Sign in</button>
+    </div>
+
+    <div class="msg" id="msg"></div>
+  </div>
+
+<script>
+const SUPABASE_URL      = "https://YOUR-PROJECT.supabase.co";   // ← replace
+const SUPABASE_ANON_KEY = "YOUR-ANON-KEY";                      // ← replace
+const APP_URL           = "https://YOUR_USER.github.io/YOUR_REPO/index.html"; // ← replace
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = (id) => document.getElementById(id);
+const msg = (t) => { $("msg").textContent = t || ""; };
+
+async function goIfSignedIn() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) location.href = APP_URL;
+}
+goIfSignedIn(); // already logged in? jump to app
+
+$("signup").onclick = async () => {
+  msg("Creating account…");
+  const { error } = await supabase.auth.signUp({
+    email: $("email").value.trim(),
+    password: $("password").value
+  });
+  if (error) return msg(error.message);
+  msg("Account created. You are signed in.");
+  goIfSignedIn();
+};
+
+$("signin").onclick = async () => {
+  msg("Signing in…");
+  const { error } = await supabase.auth.signInWithPassword({
+    email: $("email").value.trim(),
+    password: $("password").value
+  });
+  if (error) return msg(error.message);
+  msg("Signed in.");
+  goIfSignedIn();
+};
+
+// If auth state changes (e.g., after magic link), redirect.
+supabase.auth.onAuthStateChange((event) => {
+  if (event === "SIGNED_IN") goIfSignedIn();
+});
+</script>
+</body>
+</html>
