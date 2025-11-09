@@ -591,42 +591,78 @@
 
 
   
-  // -----------------
-  // TABLE + LEGEND UI
-  // -----------------
-function renderTable(){
-  const tbody=document.getElementById("tbody");
-  tbody.innerHTML="";
-  blocks.forEach((b,i)=>{
-      const tr=document.createElement("tr");
+    // -----------------
+    // TABLE + LEGEND UI
+    // -----------------
+  function renderTable() {
+    const tbody = document.getElementById("tbody");
+    tbody.innerHTML = "";
 
-      // — start time input —
-      const tdStart=document.createElement("td");
-      const inStart=document.createElement("input");
-      inStart.type="time";            // ← time selection control
-      inStart.value=b.start||"08:00";
-      inStart.step=60;
+    blocks.forEach((b, i) => {
+      const tr = document.createElement("tr");
+
+      // Label cell
+      const tdLabel = document.createElement("td");
+      const inLabel = document.createElement("input");
+      inLabel.type = "text";
+      inLabel.value = b.label;
+      inLabel.addEventListener("input", () => {
+        b.label = inLabel.value;
+        save();
+        renderLegend();
+        renderChart();
+      });
+      tdLabel.appendChild(inLabel);
+
+      // Start time (24h picker)
+      const tdStart = document.createElement("td");
+      const inStart = document.createElement("input");
+      inStart.type = "time";
+      inStart.value = b.start || "08:00";
+      inStart.step = 60; // 1-minute increments
+      inStart.addEventListener("input", () => {
+        b.start = inStart.value;
+        save();
+        tdMin.textContent = minutesToHM(calcMinutes(b));
+        renderLegend();
+        renderChart();
+      });
       tdStart.appendChild(inStart);
 
-      // — end time input —
-      const tdEnd=document.createElement("td");
-      const inEnd=document.createElement("input");
-      inEnd.type="time";              // ← another time selection control
-      inEnd.value=b.end||"09:00";
-      inEnd.step=60;
+      // End time (24h picker)
+      const tdEnd = document.createElement("td");
+      const inEnd = document.createElement("input");
+      inEnd.type = "time";
+      inEnd.value = b.end || "09:00";
+      inEnd.step = 60;
+      inEnd.addEventListener("input", () => {
+        b.end = inEnd.value;
+        save();
+        tdMin.textContent = minutesToHM(calcMinutes(b));
+        renderLegend();
+        renderChart();
+      });
       tdEnd.appendChild(inEnd);
 
+      // Minutes column
       const tdMin = document.createElement("td");
       tdMin.className = "minutesCell";
-      tdMin.textContent = `${minutesToHM(calcMinutes(b))}`;
+      tdMin.textContent = minutesToHM(calcMinutes(b));
 
+      // Color picker
       const tdColor = document.createElement("td");
       const inColor = document.createElement("input");
       inColor.type = "color";
       inColor.value = b.color;
-      inColor.oninput = () => { b.color = inColor.value; render(); };
+      inColor.addEventListener("input", () => {
+        b.color = inColor.value;
+        save();
+        renderLegend();
+        renderChart();
+      });
       tdColor.appendChild(inColor);
 
+      // Delete button
       const tdActions = document.createElement("td");
       const del = document.createElement("button");
       del.textContent = "✕";
@@ -635,13 +671,17 @@ function renderTable(){
       del.style.color = "var(--text)";
       del.style.padding = "6px 8px";
       del.style.borderRadius = "8px";
-      del.onclick = () => { blocks.splice(i,1); render(); };
+      del.onclick = () => {
+        blocks.splice(i, 1);
+        render();
+      };
       tdActions.appendChild(del);
 
       tr.append(tdLabel, tdStart, tdEnd, tdMin, tdColor, tdActions);
       tbody.appendChild(tr);
     });
   }
+
 
   function renderLegend(){
     const leg = document.getElementById("legend");
