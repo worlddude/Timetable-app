@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Circular Timetable — Scheduled Blocks</title>
+<style>
+  :root {
+    --bg: #0f1221;
+    --card: #14182b;
+    --text: #e8ebff;
+    --muted: #b9c0ff;
+    --ring: #222748;
+    --accent: #7c82ff;
+    --tick: rgba(255,255,255,.65);
+    --gap: #475569; /* unallocated gaps */
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); }
+  .wrap { max-width: 1040px; margin: 24px auto; padding: 16px; display: grid; gap: 16px; grid-template-columns: 1fr; }
+  @media (min-width: 1024px) { .wrap { grid-template-columns: 500px 1fr; align-items: start; } }
+
+  .phone, .panel {
+    background: var(--card);
+    border-radius: 20px;
+    padding: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.4), inset 0 0 0 1px rgba(255,255,255,.05);
+  }
+
+  .header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .header h1 { font-size: 18px; margin: 0; }
+  .sub { color: var(--muted); font-size: 12px; margin: 0; }
+
+  .chart { display: grid; place-items: center; padding: 4px 0; }
+  #chartHost { position: relative; width: 380px; height: 380px; }
+
+  .center-label {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    text-align: center; line-height: 1.1; pointer-events: none;
+  }
+  .center-label .big { font-size: 26px; font-weight: 800; }
+  .center-label .small { color: var(--muted); font-size: 12px; }
+
+  .legend { display: grid; gap: 6px; grid-template-columns: 1fr 1fr; margin-top: 10px; }
+  .legend .item {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);
+    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06);
+    border-radius: 10px; padding: 6px 8px;
+  }
+  .swatch { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(255,255,255,.25); }
+
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .row select, .row button {
+    background: rgba(255,255,255,.06); color: var(--text);
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 10px; padding: 8px 10px; font-weight: 600;
+  }
+  .row button.primary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 6px 16px rgba(124,130,255,.35); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,.06); }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; }
+  td input[type="text"], td input[type="time"], td input[type="color"] {
+    width: 100%; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+    color: var(--text); padding: 8px 10px; border-radius: 8px;
+  }
+  input[type="time"] { padding: 7px 8px; }
+  .minutesCell { color: #fff; font-weight: 600; }
+
+  .pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 700; }
+  .ok { background: rgba(134,239,172,.12); color: #86efac; border: 1px solid rgba(134,239,172,.35); }
+  .warn { background: rgba(253,224,71,.10); color: #fde047; border: 1px solid rgba(253,224,71,.35); }
+  .err { background: rgba(253,164,175,.10); color: #fda4af; border: 1px solid rgba(253,164,175,.35); }
+
+  .footer-note { color: var(--muted); font-size: 12px; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- LEFT: donut with a spinning clock hand + absolute-time wedges -->
+    <div class="phone">
+      <div class="header">
+        <div>
+          <h1>Plan your day</h1>
+          <p class="sub"></em></p>
+        </div>
+        <div class="row">
+          <label for="handMode" class="sub">Hand</label>
+          <select id="handMode" title="Choose how the hand spins">
+            <option value="time12" selected>Time of day (12h)</option>
+            <option value="second">Second sweep</option>
+            <option value="day24">24h day hand</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="chart">
+        <div id="chartHost"></div>
+        <div class="center-label">
+          <div class="big">24h</div>
+          <div class="small" id="timeLabel">—:—</div>
+        </div>
+      </div>
+
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <!-- RIGHT: schedule table with start/end times -->
+    <div class="panel">
+      <div class="row" style="justify-content: space-between; margin-bottom: 8px;">
+        <h2 style="margin:0">Scheduled Blocks</h2>
+        <div id="totals"></div>
+      </div>
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th style="width:26%">Label</th>
+            <th style="width:16%">Start</th>
+            <th style="width:16%">End</th>
+            <th style="width:14%">Minutes</th>
+            <th style="width:16%">Color</th>
+            <th style="width:12%"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="row" style="margin-top:10px; gap:8px;">
+        <button id="addRowBtn" type="button" class="primary">+ Add block</button>
+        <button id="resetBtn" type="button">Reset demo data</button>
+      </div>
+      <p class="footer-note">12 at the top. Slices align to actual times. Overnight ranges (e.g., 22:00–07:00) wrap across midnight automatically.</p>
+    </div>
+  </div>
+
+<script>
+  // ===== Utilities
+  const TAU = Math.PI * 2;
+  const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
+  const palette = ["#8b5cf6","#06b6d4","#22c55e","#f59e0b","#ef4444","#3b82f6","#a855f7","#14b8a6","#84cc16","#eab308","#f97316","#ec4899"];
+
+  function parseHHMM(str){
+    if(!str) return null;
+    const m = /^(\d{1,2}):(\d{2})$/.exec(str.trim());
+    if(!m) return null;
+    let h = +m[1], mi = +m[2];
+    if(h<0||h>23||mi<0||mi>59) return null;
+    return h*60 + mi;
+  }
+  function fmtHHMM(min){
+    min = ((min % 1440) + 1440) % 1440;
+    const h = Math.floor(min/60), m = min%60;
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  }
+  function minutesToHM(min) {
+    const h = Math.floor(min / 60), m = min % 60;
+    return (h?`${h}h`:"") + (m?`${h?" ":""}${m}m`:(h?"":"0m"));
+  }
+
+  // ===== State
+  const STORE_KEY = "timetableBlocks_v3";
+  let blocks = JSON.parse(localStorage.getItem(STORE_KEY) || "null") || [
+    { label:"Sleep",   start:"22:00", end:"07:00", color: palette[0] },
+    { label:"School",  start:"08:30", end:"14:30", color: palette[1] },
+    { label:"Gym",     start:"15:30", end:"17:00", color: palette[2] },
+    { label:"Study",   start:"18:30", end:"20:30", color: palette[3] },
+    { label:"Meals",   start:"07:30", end:"08:00", color: palette[5] },
+    { label:"Meals",   start:"12:00", end:"12:30", color: palette[5] },
+    { label:"Meals",   start:"20:30", end:"21:00", color: palette[5] },
+    { label:"Commute", start:"14:30", end:"15:15", color: palette[4] },
+    { label:"Free",    start:"21:00", end:"22:00", color: palette[6] },
+  ];
+  function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(blocks)); }
+
+  // Compute minutes for a block (wrap-aware)
+  function calcMinutes(b){
+    const s = parseHHMM(b.start), e = parseHHMM(b.end);
+    if(s===null || e===null) return 0;
+    const len = (e - s + 1440) % 1440;
+    return len;
+  }
+
+  // Build non-wrapping intervals [start,end) in 0..1440 from blocks
+  function makeIntervals(list){
+    const intervals = [];
+    list.forEach(b=>{
+      const s = parseHHMM(b.start), e = parseHHMM(b.end);
+      if(s===null || e===null) return;
+      let len = (e - s + 1440) % 1440;
+      if(len === 0) return; // ignore zero-length (full-day not supported)
+      if(s + len <= 1440){
+        intervals.push({start:s, end:s+len, label:b.label, color:b.color});
+      } else {
+        intervals.push({start:s, end:1440, label:b.label, color:b.color});
+        intervals.push({start:0, end:(s+len)-1440, label:b.label, color:b.color});
+      }
+    });
+    return intervals.sort((a,b)=>a.start-b.start);
+  }
+
+  function mergeIntervals(intervals){
+    const merged = [];
+    for(const it of intervals){
+      if(!merged.length || it.start > merged[merged.length-1].end){
+        merged.push({...it});
+      } else {
+        merged[merged.length-1].end = Math.max(merged[merged.length-1].end, it.end);
+      }
+    }
+    return merged;
+  }
+
+  function coverageMinutes(intervals){
+    const m = mergeIntervals(intervals);
+    return m.reduce((s,i)=>s+(i.end-i.start),0);
+  }
+
+  function overlapMinutes(intervals){
+    const sum = intervals.reduce((s,i)=>s+(i.end-i.start),0);
+    return Math.max(0, sum - coverageMinutes(intervals));
+  }
+
+  function computeGaps(merged){
+    const gaps = [];
+    if(!merged.length){ gaps.push({start:0, end:1440}); return gaps; }
+    for(let i=0;i<merged.length-1;i++){
+      if(merged[i].end < merged[i+1].start){
+        gaps.push({start: merged[i].end, end: merged[i+1].start});
+      }
+    }
+    // wrap gap
+    if(merged[merged.length-1].end !== 1440 || merged[0].start !== 0){
+      const wrap = (merged[0].start + (1440 - merged[merged.length-1].end)) % 1440;
+      if(wrap>0){
+        gaps.push({start: merged[merged.length-1].end, end: 1440});
+        if(merged[0].start > 0) gaps.push({start:0, end: merged[0].start});
+      }
+    }
+    return gaps.sort((a,b)=>a.start-b.start);
+  }
+
+  // ===== SVG helpers
+  function donutArcPath(cx, cy, rOuter, rInner, startAngle, endAngle) {
+    const largeArc = ((endAngle - startAngle + TAU) % TAU) > Math.PI ? 1 : 0;
+    const a0 = -Math.PI/2 + startAngle;
+    const a1 = -Math.PI/2 + endAngle;
+    const x0 = cx + rOuter * Math.cos(a0), y0 = cy + rOuter * Math.sin(a0);
+    const x1 = cx + rOuter * Math.cos(a1), y1 = cy + rOuter * Math.sin(a1);
+    const x2 = cx + rInner * Math.cos(a1), y2 = cy + rInner * Math.sin(a1);
+    const x3 = cx + rInner * Math.cos(a0), y3 = cy + rInner * Math.sin(a0);
+    return `M ${x0} ${y0} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x1} ${y1} L ${x2} ${y2} A ${rInner} ${rInner} 0 ${largeArc} 0 ${x3} ${y3} Z`;
+  }
+
+  // NEW: draw the clock face (minute ticks + hour ticks + numerals) for 12h or 24h
+  function drawFace(svg, cx, cy, rOuter, rInner, faceMode) {
+    const ringWidth = rOuter - rInner;
+
+    // --- Minute ticks (always 60, thin)
+    const minuteLen = Math.max(4, ringWidth * 0.28);
+    for (let i = 0; i < 60; i++) {
+      const a = -Math.PI/2 + (i/60)*TAU;
+      const r1 = rOuter - minuteLen;
+      const r2 = rOuter - 2;
+      const x1 = cx + r1*Math.cos(a), y1 = cy + r1*Math.sin(a);
+      const x2 = cx + r2*Math.cos(a), y2 = cy + r2*Math.sin(a);
+      const line = document.createElementNS(svg.namespaceURI, "line");
+      line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+      line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+      line.setAttribute("stroke", "var(--tick)");
+      line.setAttribute("stroke-width", 1);
+      line.setAttribute("stroke-linecap", "round");
+      line.setAttribute("opacity", "0.35");
+      svg.appendChild(line);
+    }
+
+    // --- Hour ticks + numerals
+    const midR = (rInner + rOuter) / 2;
+
+    if (faceMode === "24") {
+      // 24 hour ticks (every 15°). Alternate long/medium for clarity.
+      const longLen = Math.max(10, ringWidth * 0.60);
+      const medLen  = Math.max(8,  ringWidth * 0.45);
+      for (let h = 0; h < 24; h++) {
+        const a = -Math.PI/2 + (h/24)*TAU;
+        const len = (h % 2 === 0) ? longLen : medLen;
+        const r1 = rOuter - len, r2 = rOuter - 2;
+        const x1 = cx + r1*Math.cos(a), y1 = cy + r1*Math.sin(a);
+        const x2 = cx + r2*Math.cos(a), y2 = cy + r2*Math.sin(a);
+        const line = document.createElementNS(svg.namespaceURI, "line");
+        line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+        line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+        line.setAttribute("stroke", "white");
+        line.setAttribute("stroke-width", 2);
+        line.setAttribute("stroke-linecap", "round");
+        svg.appendChild(line);
+      }
+
+      // Numerals every 2 hours (0,2,...,22) to avoid clutter.
+      // To show ALL 24, change step from 2 to 1 below.
+      for (let h = 0; h < 24; h += 2) {
+        const a = -Math.PI/2 + (h/24)*TAU;
+        const tx = cx + midR*Math.cos(a);
+        const ty = cy + midR*Math.sin(a);
+        const t = document.createElementNS(svg.namespaceURI, "text");
+        t.setAttribute("x", tx); t.setAttribute("y", ty);
+        t.setAttribute("fill", "white");
+        t.setAttribute("font-size", "11");
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("alignment-baseline", "middle");
+        t.setAttribute("style", "paint-order: stroke; stroke: rgba(0,0,0,.35); stroke-width: 3px;");
+        t.textContent = String(h); // e.g., 0,2,4,...22
+        svg.appendChild(t);
+      }
+    } else {
+      // 12-hour face
+      const longLen = Math.max(10, ringWidth * 0.60);
+      for (let h = 0; h < 12; h++) {
+        const a = -Math.PI/2 + (h/12)*TAU;
+        const r1 = rOuter - longLen, r2 = rOuter - 2;
+        const x1 = cx + r1*Math.cos(a), y1 = cy + r1*Math.sin(a);
+        const x2 = cx + r2*Math.cos(a), y2 = cy + r2*Math.sin(a);
+        const line = document.createElementNS(svg.namespaceURI, "line");
+        line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+        line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+        line.setAttribute("stroke", "white");
+        line.setAttribute("stroke-width", 2);
+        line.setAttribute("stroke-linecap", "round");
+        svg.appendChild(line);
+      }
+      // 12 numerals
+      for (let h = 1; h <= 12; h++) {
+        const a = -Math.PI/2 + (h/12)*TAU;
+        const tx = cx + midR*Math.cos(a);
+        const ty = cy + midR*Math.sin(a);
+        const t = document.createElementNS(svg.namespaceURI, "text");
+        t.setAttribute("x", tx); t.setAttribute("y", ty);
+        t.setAttribute("fill", "white");
+        t.setAttribute("font-size", "12");
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("alignment-baseline", "middle");
+        t.setAttribute("style", "paint-order: stroke; stroke: rgba(0,0,0,.35); stroke-width: 3px;");
+        t.textContent = h === 12 ? "12" : String(h);
+        svg.appendChild(t);
+      }
+    }
+  }
+
+  // ===== Chart rendering (absolute time)
+  function renderChart(){
+    const host = document.getElementById("chartHost");
+    host.innerHTML = "";
+
+    const W = host.clientWidth, H = host.clientHeight;
+    const cx = W/2, cy = H/2, rOuter = Math.min(W,H)*0.44, rInner = rOuter*0.62;
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", W); svg.setAttribute("height", H);
+
+    // Background ring
+    const bgRing = document.createElementNS(svg.namespaceURI, "circle");
+    bgRing.setAttribute("cx", cx); bgRing.setAttribute("cy", cy);
+    bgRing.setAttribute("r", rOuter);
+    bgRing.setAttribute("fill", "none");
+    bgRing.setAttribute("stroke", "var(--ring)");
+    bgRing.setAttribute("stroke-width", (rOuter - rInner));
+    svg.appendChild(bgRing);
+
+    // Build intervals from blocks
+    const blockIntervals = makeIntervals(blocks);
+    const merged = mergeIntervals(blockIntervals);
+    const gaps = computeGaps(merged);
+
+    // Draw gap arcs first
+    gaps.forEach(g=>{
+      const a0 = (g.start/1440) * TAU;
+      const a1 = (g.end/1440) * TAU;
+      const path = document.createElementNS(svg.namespaceURI, "path");
+      path.setAttribute("d", donutArcPath(cx, cy, rOuter, rInner, a0, a1));
+      path.setAttribute("fill", "var(--gap)");
+      path.setAttribute("opacity", "0.85");
+      svg.appendChild(path);
+    });
+
+    // Draw each block interval as an arc at its absolute time
+    blockIntervals.forEach(it=>{
+      const a0 = (it.start/1440) * TAU;
+      const a1 = (it.end/1440) * TAU;
+      const path = document.createElementNS(svg.namespaceURI, "path");
+      path.setAttribute("d", donutArcPath(cx, cy, rOuter, rInner, a0, a1));
+      path.setAttribute("fill", it.color);
+      path.setAttribute("opacity", "0.98");
+      svg.appendChild(path);
+    });
+
+    // Ticks & numerals — switch face based on hand mode
+    const mode = document.getElementById("handMode").value;
+    drawFace(svg, cx, cy, rOuter, rInner, mode === "day24" ? "24" : "12");
+
+    // Clock hand
+    const handGroup = document.createElementNS(svg.namespaceURI, "g");
+    handGroup.setAttribute("id", "handGroup");
+    handGroup.style.transformOrigin = `${cx}px ${cy}px`;
+    handGroup.style.transition = "transform 0.15s linear";
+
+    const hand = document.createElementNS(svg.namespaceURI, "line");
+    hand.setAttribute("x1", cx); hand.setAttribute("y1", cy);
+    hand.setAttribute("x2", cx); hand.setAttribute("y2", cy - (rOuter - 4));
+    hand.setAttribute("stroke", "#ffffff");
+    hand.setAttribute("stroke-width", "2");
+    hand.setAttribute("stroke-linecap", "round");
+    handGroup.appendChild(hand);
+
+    const tail = document.createElementNS(svg.namespaceURI, "line");
+    tail.setAttribute("x1", cx); tail.setAttribute("y1", cy);
+    tail.setAttribute("x2", cx); tail.setAttribute("y2", cy + Math.max(8, (rOuter - rInner)*0.25));
+    tail.setAttribute("stroke", "rgba(255,255,255,.7)");
+    tail.setAttribute("stroke-width", "2");
+    tail.setAttribute("stroke-linecap", "round");
+    handGroup.appendChild(tail);
+
+    const hub = document.createElementNS(svg.namespaceURI, "circle");
+    hub.setAttribute("cx", cx); hub.setAttribute("cy", cy); hub.setAttribute("r", 4.5);
+    hub.setAttribute("fill", "#ffffff"); hub.setAttribute("stroke", "rgba(0,0,0,.45)"); hub.setAttribute("stroke-width", "2");
+    handGroup.appendChild(hub);
+
+    svg.appendChild(handGroup);
+    host.appendChild(svg);
+
+    // Coverage & overlap status
+    const cov = coverageMinutes(blockIntervals);
+    const ov  = overlapMinutes(blockIntervals);
+    const free = Math.max(0, 1440 - cov);
+    const totals = document.getElementById("totals");
+    const pill = document.createElement("span");
+    let cls = "ok", msg = "All scheduled — 24h covered";
+    if (ov > 0) { cls = "err"; msg = `Overlap: ${minutesToHM(ov)}`; }
+    else if (free > 0) { cls = "warn"; msg = `Free/unallocated: ${minutesToHM(free)}`; }
+    pill.className = `pill ${cls}`; pill.textContent = msg;
+    totals.innerHTML = ""; totals.appendChild(pill);
+
+    // Start/refresh the hand
+    startHandAnimation(handGroup);
+  }
+
+  function render(){
+    save();
+    renderTable();
+    renderLegend();
+    renderChart();
+  }
+
+  // ===== Hand animation
+  let handTimer = null;
+  function formatTime(d){
+    const hh = d.getHours();
+    const mm = d.getMinutes().toString().padStart(2,'0');
+    const ss = d.getSeconds().toString().padStart(2,'0');
+    const mode = document.getElementById("handMode").value;
+    const label = mode === "time12"
+      ? `${(hh%12)||12}:${mm}:${ss} ${hh<12?"AM":"PM"}`
+      : `${hh.toString().padStart(2,'0')}:${mm}:${ss}`;
+    document.getElementById("timeLabel").textContent = label;
+  }
+
+  function startHandAnimation(handGroup){
+    if (handTimer) { clearInterval(handTimer); handTimer = null; }
+    const mode = document.getElementById("handMode").value;
+
+    const update = () => {
+      const d = new Date();
+      formatTime(d);
+      let angleDeg = 0;
+
+      if (mode === "second") {
+        const s = d.getSeconds() + d.getMilliseconds()/1000;
+        angleDeg = (s / 60) * 360;
+      } else if (mode === "day24") {
+        const h = d.getHours() + d.getMinutes()/60 + d.getSeconds()/3600;
+        angleDeg = (h / 24) * 360;       // 24h rotation
+      } else {
+        const h = (d.getHours() % 12) + d.getMinutes()/60 + d.getSeconds()/3600;
+        angleDeg = h * 30;               // 12h hour hand
+      }
+      handGroup.style.transform = `rotate(${angleDeg}deg)`;
+    };
+
+    update();
+    handTimer = setInterval(update, 100);
+  }
+
+  // ===== UI: Table + Legend
+  function renderTable(){
+    const tbody = document.getElementById("tbody");
+    tbody.innerHTML = "";
+    blocks.forEach((b, i) => {
+      const tr = document.createElement("tr");
+
+      const tdLabel = document.createElement("td");
+      const inLabel = document.createElement("input");
+      inLabel.type = "text"; inLabel.value = b.label;
+      inLabel.oninput = () => { b.label = inLabel.value; render(); };
+      tdLabel.appendChild(inLabel);
+
+      const tdStart = document.createElement("td");
+      const inStart = document.createElement("input");
+      inStart.type = "time"; inStart.value = b.start || "08:00"; inStart.step = 60;
+      inStart.oninput = () => { b.start = inStart.value; render(); };
+      tdStart.appendChild(inStart);
+
+      const tdEnd = document.createElement("td");
+      const inEnd = document.createElement("input");
+      inEnd.type = "time"; inEnd.value = b.end || "09:00"; inEnd.step = 60;
+      inEnd.oninput = () => { b.end = inEnd.value; render(); };
+      tdEnd.appendChild(inEnd);
+
+      const tdMin = document.createElement("td");
+      tdMin.className = "minutesCell";
+      tdMin.textContent = `${minutesToHM(calcMinutes(b))}`;
+
+      const tdColor = document.createElement("td");
+      const inColor = document.createElement("input");
+      inColor.type = "color"; inColor.value = b.color;
+      inColor.oninput = () => { b.color = inColor.value; render(); };
+      tdColor.appendChild(inColor);
+
+      const tdActions = document.createElement("td");
+      const del = document.createElement("button");
+      del.textContent = "✕";
+      del.style.background = "transparent";
+      del.style.border = "1px solid rgba(255,255,255,.25)";
+      del.style.color = "var(--text)";
+      del.style.padding = "6px 8px";
+      del.style.borderRadius = "8px";
+      del.onclick = () => { blocks.splice(i,1); render(); };
+      tdActions.appendChild(del);
+
+      tr.append(tdLabel, tdStart, tdEnd, tdMin, tdColor, tdActions);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderLegend(){
+    const leg = document.getElementById("legend"); leg.innerHTML = "";
+    blocks.forEach((b) => {
+      const mins = calcMinutes(b);
+      const row = document.createElement("div");
+      row.className = "item";
+      row.innerHTML = `<span class="swatch" style="background:${b.color}"></span>
+                       <span>${b.label} <span style="color:#fff">${b.start}</span>–<span style="color:#fff">${b.end}</span></span>
+                       <span style="margin-left:auto;color:#fff">${minutesToHM(mins)}</span>`;
+      leg.appendChild(row);
+    });
+  }
+
+  // ===== Events
+  document.getElementById("addRowBtn").onclick = () => {
+    const now = new Date();
+    const startMin = now.getHours()*60 + now.getMinutes();
+    const endMin = (startMin + 60) % 1440;
+    const nextColor = palette[blocks.length % palette.length];
+    blocks.push({ label:"New Block", start: fmtHHMM(startMin), end: fmtHHMM(endMin), color: nextColor });
+    render();
+  };
+  document.getElementById("resetBtn").onclick = () => {
+    blocks = [
+      { label:"Sleep",   start:"22:00", end:"07:00", color: palette[0] },
+      { label:"School",  start:"08:30", end:"14:30", color: palette[1] },
+      { label:"Gym",     start:"15:30", end:"17:00", color: palette[2] },
+      { label:"Study",   start:"18:30", end:"20:30", color: palette[3] },
+      { label:"Meals",   start:"07:30", end:"08:00", color: palette[5] },
+      { label:"Meals",   start:"12:00", end:"12:30", color: palette[5] },
+      { label:"Meals",   start:"20:30", end:"21:00", color: palette[5] },
+      { label:"Commute", start:"14:30", end:"15:15", color: palette[4] },
+      { label:"Free",    start:"21:00", end:"22:00", color: palette[6] },
+    ];
+    render();
+  };
+  document.getElementById("handMode").onchange = () => renderChart();
+
+  // ===== Init
+  render();
+</script>
+</body>
+</html>
