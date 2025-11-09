@@ -34,9 +34,12 @@
   .chart { display: grid; place-items: center; padding: 4px 0; }
   #chartHost { position: relative; width: 380px; height: 380px; }
 
+  /* CHANGED: make the label appear BELOW the clock, centered */
   .center-label {
-    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-    text-align: center; line-height: 1.1; pointer-events: none;
+    text-align: center;
+    line-height: 1.1;
+    pointer-events: none;
+    margin-top: 8px;
   }
   .center-label .big { font-size: 26px; font-weight: 800; }
   .center-label .small { color: var(--muted); font-size: 12px; }
@@ -60,11 +63,21 @@
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   th, td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,.06); }
   th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; }
-  td input[type="text"], td input[type="time"], td input[type="color"] {
+
+  /* CHANGED: don't style color inputs like text/time so the swatch shows correctly */
+  td input[type="text"], td input[type="time"] {
     width: 100%; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
     color: var(--text); padding: 8px 10px; border-radius: 8px;
   }
   input[type="time"] { padding: 7px 8px; }
+
+  /* NEW: make the color picker visibly show the event color */
+  td input[type="color"] {
+    width: 32px; height: 32px; padding: 0;
+    background: none; border: 1px solid rgba(255,255,255,.25);
+    border-radius: 8px; cursor: pointer;
+  }
+
   .minutesCell { color: #fff; font-weight: 600; }
 
   .pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 700; }
@@ -87,15 +100,15 @@
         <div class="row">
           <label for="handMode" class="sub">Hand</label>
           <select id="handMode" title="Choose how the hand spins">
-            <option value="time12" selected>Time of day (12h)</option>
-            <option value="second">Second sweep</option>
-            <option value="day24">24h day hand</option>
+            <!-- CHANGED: only keep 24h -->
+            <option value="day24" selected>24h day hand</option>
           </select>
         </div>
       </div>
 
       <div class="chart">
         <div id="chartHost"></div>
+        <!-- CHANGED: this now sits under the clock (via CSS) -->
         <div class="center-label">
           <div class="big">24h</div>
           <div class="small" id="timeLabel">—:—</div>
@@ -295,7 +308,6 @@
       }
 
       // Numerals every 2 hours (0,2,...,22) to avoid clutter.
-      // To show ALL 24, change step from 2 to 1 below.
       for (let h = 0; h < 24; h += 2) {
         const a = -Math.PI/2 + (h/24)*TAU;
         const tx = cx + midR*Math.cos(a);
@@ -307,7 +319,7 @@
         t.setAttribute("text-anchor", "middle");
         t.setAttribute("alignment-baseline", "middle");
         t.setAttribute("style", "paint-order: stroke; stroke: rgba(0,0,0,.35); stroke-width: 3px;");
-        t.textContent = String(h); // e.g., 0,2,4,...22
+        t.textContent = String(h);
         svg.appendChild(t);
       }
     } else {
@@ -326,7 +338,6 @@
         line.setAttribute("stroke-linecap", "round");
         svg.appendChild(line);
       }
-      // 12 numerals
       for (let h = 1; h <= 12; h++) {
         const a = -Math.PI/2 + (h/12)*TAU;
         const tx = cx + midR*Math.cos(a);
@@ -391,7 +402,7 @@
       svg.appendChild(path);
     });
 
-    // Ticks & numerals — switch face based on hand mode
+    // Ticks & numerals — with only 24h option, this will always be 24
     const mode = document.getElementById("handMode").value;
     drawFace(svg, cx, cy, rOuter, rInner, mode === "day24" ? "24" : "12");
 
@@ -503,13 +514,15 @@
       const tdStart = document.createElement("td");
       const inStart = document.createElement("input");
       inStart.type = "time"; inStart.value = b.start || "08:00"; inStart.step = 60;
-      inStart.oninput = () => { b.start = inStart.value; render(); };
+      /* CHANGED: update only when user finishes editing to avoid focus loss */
+      inStart.onchange = () => { b.start = inStart.value; render(); };
       tdStart.appendChild(inStart);
 
       const tdEnd = document.createElement("td");
       const inEnd = document.createElement("input");
       inEnd.type = "time"; inEnd.value = b.end || "09:00"; inEnd.step = 60;
-      inEnd.oninput = () => { b.end = inEnd.value; render(); };
+      /* CHANGED: same as above */
+      inEnd.onchange = () => { b.end = inEnd.value; render(); };
       tdEnd.appendChild(inEnd);
 
       const tdMin = document.createElement("td");
