@@ -32,10 +32,7 @@
       grid-template-columns: 1fr;
     }
     @media (min-width: 1024px) {
-      .wrap {
-        grid-template-columns: 500px 1fr;
-        align-items: start;
-      }
+      .wrap { grid-template-columns: 500px 1fr; align-items: start; }
     }
     .phone, .panel {
       background: var(--card);
@@ -154,6 +151,7 @@
     .footer-note { color: var(--muted); font-size: 12px; margin-top: 10px; }
   </style>
 </head>
+
 <body>
   <div class="wrap">
     <div class="phone">
@@ -187,6 +185,7 @@
         <h2 style="margin:0">Scheduled Blocks</h2>
         <div id="totals"></div>
       </div>
+
       <table id="tbl">
         <thead>
           <tr>
@@ -200,6 +199,7 @@
         </thead>
         <tbody id="tbody"></tbody>
       </table>
+
       <div class="row" style="margin-top:10px; gap:8px;">
         <button id="addRowBtn" type="button" class="primary">+ Add block</button>
       </div>
@@ -208,13 +208,16 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <script>
+    // === Setup ===
     const SUPABASE_URL = "https://uvidyiedolvtsissfkel.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2aWR5aWVkb2x2dHNpc3Nma2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2OTIxMDgsImV4cCI6MjA3ODI2ODEwOH0.WF0WXdilYUooWm_VdUsrvXHdWPU26kvv9urYKOHHooQ";
     const LOGIN_URL = "https://worlddude.github.io/Timetable-app/Login";
 
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    // === Auth ===
     async function requireAuth() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -237,7 +240,6 @@
         .select("blocks")
         .eq("user_id", uid)
         .single();
-
       if (!error && data && Array.isArray(data.blocks)) {
         blocks = data.blocks;
         return true;
@@ -258,8 +260,8 @@
       remoteSaveTimer = setTimeout(remoteSave, 800);
     }
 
+    // === Helpers ===
     const TAU = Math.PI * 2;
-    const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
     const palette = ["#8b5cf6","#06b6d4","#22c55e","#f59e0b","#ef4444","#3b82f6","#a855f7","#14b8a6","#84cc16","#eab308","#f97316","#ec4899"];
 
     function parseHHMM(str){
@@ -279,9 +281,10 @@
 
     function minutesToHM(min) {
       const h = Math.floor(min / 60), m = min % 60;
-      return `${h ? h + 'h' : ''}${m ? (h ? ' ' : '') + m + 'm' : (h ? '' : '0m')}`;
+      return `${h? h + 'h' : ''}${m ? (h? ' ' : '') + m + 'm' : (h?'':'0m')}`;
     }
 
+    // === State ===
     const STORE_KEY = "timetableBlocks_v3";
     let blocks = JSON.parse(localStorage.getItem(STORE_KEY) || "null") || [
       { label:"Sleep",   start:"21:00", end:"07:00", color: palette[0] },
@@ -295,6 +298,7 @@
       queueRemoteSave();
     }
 
+    // === Interval + chart logic ===
     function calcMinutes(b){
       const s = parseHHMM(b.start), e = parseHHMM(b.end);
       if(s===null || e===null) return 0;
@@ -369,7 +373,222 @@
       return `M ${x0} ${y0} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x1} ${y1} L ${x2} ${y2} A ${rInner} ${rInner} 0 ${largeArc} 0 ${x3} ${y3} Z`;
     }
 
-    // (continues same style — JS rendering & animation logic remain identical with corrected backticks)
+    function drawFace(svg, cx, cy, rOuter, rInner) {
+      const ringWidth = rOuter - rInner;
+      const midR = (rInner + rOuter) / 2;
+      for (let h = 0; h < 24; h++) {
+        const a = -Math.PI/2 + (h/24)*TAU;
+        const len = (h % 2 === 0) ? ringWidth * 0.6 : ringWidth * 0.45;
+        const r1 = rOuter - len, r2 = rOuter - 2;
+        const x1 = cx + r1*Math.cos(a), y1 = cy + r1*Math.sin(a);
+        const x2 = cx + r2*Math.cos(a), y2 = cy + r2*Math.sin(a);
+        const line = document.createElementNS(svg.namespaceURI, "line");
+        line.setAttribute("x1", x1);
+        line.setAttribute("y1", y1);
+        line.setAttribute("x2", x2);
+        line.setAttribute("y2", y2);
+        line.setAttribute("stroke", "white");
+        line.setAttribute("stroke-width", 2);
+        line.setAttribute("stroke-linecap", "round");
+        svg.appendChild(line);
+      }
+      for (let h = 0; h < 24; h += 2) {
+        const a = -Math.PI/2 + (h/24)*TAU;
+        const tx = cx + midR*Math.cos(a);
+        const ty = cy + midR*Math.sin(a);
+        const t = document.createElementNS(svg.namespaceURI, "text");
+        t.setAttribute("x", tx);
+        t.setAttribute("y", ty);
+        t.setAttribute("fill", "white");
+        t.setAttribute("font-size", "11");
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("alignment-baseline", "middle");
+        t.textContent = String(h);
+        svg.appendChild(t);
+      }
+    }
+
+    function renderChart(){
+      const host = document.getElementById("chartHost");
+      host.innerHTML = "";
+      const W = host.clientWidth, H = host.clientHeight;
+      const cx = W/2, cy = H/2, rOuter = Math.min(W,H)*0.44, rInner = rOuter*0.62;
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("width", W);
+      svg.setAttribute("height", H);
+      const bgRing = document.createElementNS(svg.namespaceURI, "circle");
+      bgRing.setAttribute("cx", cx);
+      bgRing.setAttribute("cy", cy);
+      bgRing.setAttribute("r", rOuter);
+      bgRing.setAttribute("fill", "none");
+      bgRing.setAttribute("stroke", "var(--ring)");
+      bgRing.setAttribute("stroke-width", (rOuter - rInner));
+      svg.appendChild(bgRing);
+      const blockIntervals = makeIntervals(blocks);
+      const merged = mergeIntervals(blockIntervals);
+      const gaps = computeGaps(merged);
+      gaps.forEach(g=>{
+        const a0 = (g.start/1440)*TAU;
+        const a1 = (g.end/1440)*TAU;
+        const path = document.createElementNS(svg.namespaceURI, "path");
+        path.setAttribute("d", donutArcPath(cx, cy, rOuter, rInner, a0, a1));
+        path.setAttribute("fill", "var(--gap)");
+        svg.appendChild(path);
+      });
+      blockIntervals.forEach(it=>{
+        const a0 = (it.start/1440)*TAU;
+        const a1 = (it.end/1440)*TAU;
+        const path = document.createElementNS(svg.namespaceURI, "path");
+        path.setAttribute("d", donutArcPath(cx, cy, rOuter, rInner, a0, a1));
+        path.setAttribute("fill", it.color);
+        svg.appendChild(path);
+      });
+      drawFace(svg, cx, cy, rOuter, rInner);
+      const handGroup = document.createElementNS(svg.namespaceURI, "g");
+      handGroup.setAttribute("id", "handGroup");
+      handGroup.style.transformOrigin = `${cx}px ${cy}px`;
+      const hand = document.createElementNS(svg.namespaceURI, "line");
+      hand.setAttribute("x1", cx);
+      hand.setAttribute("y1", cy);
+      hand.setAttribute("x2", cx);
+      hand.setAttribute("y2", cy - (rOuter - 4));
+      hand.setAttribute("stroke", "#ffffff");
+      hand.setAttribute("stroke-width", "2");
+      handGroup.appendChild(hand);
+      svg.appendChild(handGroup);
+      host.appendChild(svg);
+      const cov = coverageMinutes(blockIntervals);
+      const ov  = overlapMinutes(blockIntervals);
+      const free = Math.max(0, 1440 - cov);
+      const totals = document.getElementById("totals");
+      const pill = document.createElement("span");
+      let cls = "ok", msg = "All scheduled — 24h covered";
+      if (ov > 0) { cls = "err"; msg = `Overlap: ${minutesToHM(ov)}`; }
+      else if (free > 0) { cls = "warn"; msg = `Free/unallocated: ${minutesToHM(free)}`; }
+      pill.className = `pill ${cls}`;
+      pill.textContent = msg;
+      totals.innerHTML = "";
+      totals.appendChild(pill);
+      startHandAnimation(handGroup);
+    }
+
+    function renderTable(){
+      const tbody = document.getElementById("tbody");
+      tbody.innerHTML = "";
+      blocks.forEach((b, i) => {
+        const tr = document.createElement("tr");
+        const tdLabel = document.createElement("td");
+        const inLabel = document.createElement("input");
+        inLabel.type = "text"; inLabel.value = b.label;
+        inLabel.oninput = () => { b.label = inLabel.value; };
+        inLabel.onblur  = () => { render(); };
+        tdLabel.appendChild(inLabel);
+        const tdStart = document.createElement("td");
+        const inStart = document.createElement("input");
+        inStart.type = "time"; inStart.value = b.start || "08:00"; inStart.step = 60;
+        inStart.onchange = () => { b.start = inStart.value; render(); };
+        tdStart.appendChild(inStart);
+        const tdEnd = document.createElement("td");
+        const inEnd = document.createElement("input");
+        inEnd.type = "time"; inEnd.value = b.end || "09:00"; inEnd.step = 60;
+        inEnd.onchange = () => { b.end = inEnd.value; render(); };
+        tdEnd.appendChild(inEnd);
+        const tdMin = document.createElement("td");
+        tdMin.className = "minutesCell";
+        tdMin.textContent = `${minutesToHM(calcMinutes(b))}`;
+        const tdColor = document.createElement("td");
+        const inColor = document.createElement("input");
+        inColor.type = "color"; inColor.value = b.color;
+        inColor.oninput = () => { b.color = inColor.value; render(); };
+        tdColor.appendChild(inColor);
+        const tdActions = document.createElement("td");
+        const del = document.createElement("button");
+        del.textContent = "✕";
+        del.style.background = "transparent";
+        del.style.border = "1px solid rgba(255,255,255,.25)";
+        del.style.color = "var(--text)";
+        del.style.padding = "6px 8px";
+        del.style.borderRadius = "8px";
+        del.onclick = () => { blocks.splice(i,1); render(); };
+        tdActions.appendChild(del);
+        tr.append(tdLabel, tdStart, tdEnd, tdMin, tdColor, tdActions);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderLegend(){
+      const leg = document.getElementById("legend");
+      leg.innerHTML = "";
+      blocks.forEach((b) => {
+        const mins = calcMinutes(b);
+        const row = document.createElement("div");
+        row.className = "item";
+        row.innerHTML = `<span class="swatch" style="background:${b.color}"></span>
+                         <span>${b.label} <span style="color:#fff">${b.start}</span>–<span style="color:#fff">${b.end}</span></span>
+                         <span style="margin-left:auto;color:#fff">${minutesToHM(mins)}</span>`;
+        leg.appendChild(row);
+      });
+    }
+
+    function render(){
+      save();
+      renderTable();
+      renderLegend();
+      renderChart();
+    }
+
+    // === Hand animation ===
+    let handTimer = null;
+    function formatTime(d){
+      const hh = d.getHours().toString().padStart(2,'0');
+      const mm = d.getMinutes().toString().padStart(2,'0');
+      const ss = d.getSeconds().toString().padStart(2,'0');
+      document.getElementById("timeLabel").textContent = `${hh}:${mm}:${ss}`;
+    }
+
+    function startHandAnimation(handGroup){
+      if (handTimer) { clearInterval(handTimer); handTimer = null; }
+      const update = () => {
+        const d = new Date();
+        formatTime(d);
+        const h = d.getHours() + d.getMinutes()/60 + d.getSeconds()/3600;
+        const angleDeg = (h / 24) * 360;
+        handGroup.style.transform = `rotate(${angleDeg}deg)`;
+      };
+      update();
+      handTimer = setInterval(update, 1000);
+    }
+
+    // === Events ===
+    document.getElementById("addRowBtn").onclick = () => {
+      const now = new Date();
+      const startMin = now.getHours()*60 + now.getMinutes();
+      const endMin = (startMin + 60) % 1440;
+      const nextColor = palette[blocks.length % palette.length];
+      blocks.push({ label:"New Block", start: fmtHHMM(startMin), end: fmtHHMM(endMin), color: nextColor });
+      render();
+    };
+
+    document.getElementById("handMode").onchange = () => renderChart();
+    document.getElementById("signOutBtn").onclick = signOut;
+
+    async function signOut() {
+      const btn = document.getElementById('signOutBtn');
+      try {
+        if (btn) { btn.disabled = true; btn.textContent = 'Signing out…'; }
+        await supabase.auth.signOut();
+        location.href = LOGIN_URL;
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Sign out'; }
+        alert('Could not sign out: ' + (e?.message || e));
+      }
+    }
+
+    (async function init(){
+      if (!(await requireAuth())) return;
+      await loadRemote();
+      render();
+    })();
   </script>
 </body>
 </html>
