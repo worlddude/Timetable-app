@@ -12,6 +12,13 @@
   body{display:grid;place-items:center;min-height:100dvh}
   .wrap{width:100%;max-width:380px;background:var(--card);padding:22px;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.4),inset 0 0 0 1px rgba(255,255,255,.05)}
   h1{margin:0 0 4px;font-size:22px}
+  /* ↓ make the inputs narrower + centered */
+  input[type="email"],
+  input[type="password"]{
+    width: clamp(220px, 75%, 260px); /* pick your min/ideal/max */
+    display: block;
+    margin: 6px auto 0;              /* centers inside .wrap */
+  }
   .sub{color:var(--muted);margin:0 0 14px}
   label{font-weight:600;font-size:12px;color:var(--muted)}
   /* Smaller inputs */
