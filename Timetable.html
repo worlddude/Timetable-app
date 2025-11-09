@@ -598,36 +598,24 @@ function renderTable(){
   const tbody=document.getElementById("tbody");
   tbody.innerHTML="";
   blocks.forEach((b,i)=>{
-    const tr=document.createElement("tr");
+      const tr=document.createElement("tr");
 
-    // — start time input —
-    const tdStart=document.createElement("td");
-    const inStart=document.createElement("input");
-    inStart.type="time";            // ← time selection control
-    inStart.value=b.start||"08:00";
-    inStart.step=60;
-    tdStart.appendChild(inStart);
+      // — start time input —
+      const tdStart=document.createElement("td");
+      const inStart=document.createElement("input");
+      inStart.type="time";            // ← time selection control
+      inStart.value=b.start||"08:00";
+      inStart.step=60;
+      tdStart.appendChild(inStart);
 
-    // — end time input —
-    const tdEnd=document.createElement("td");
-    const inEnd=document.createElement("input");
-    inEnd.type="time";              // ← another time selection control
-    inEnd.value=b.end||"09:00";
-    inEnd.step=60;
-    tdEnd.appendChild(inEnd);
+      // — end time input —
+      const tdEnd=document.createElement("td");
+      const inEnd=document.createElement("input");
+      inEnd.type="time";              // ← another time selection control
+      inEnd.value=b.end||"09:00";
+      inEnd.step=60;
+      tdEnd.appendChild(inEnd);
 
-
-
-
-
-
-
-
-
-
-
-
-      
       const tdMin = document.createElement("td");
       tdMin.className = "minutesCell";
       tdMin.textContent = `${minutesToHM(calcMinutes(b))}`;
