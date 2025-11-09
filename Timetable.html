@@ -179,80 +179,44 @@
   // ---------------
   // PER-USER STATE
   // ---------------
-
-  // localStorage key prefix
   const BASE_STORE_KEY = "timetableBlocks_v3";
-
-  // brand new users start like this:
   const DEFAULT_BLOCKS = [
-    { label:"Sleep", start:"22:00", end:"07:00", color: "#8b5cf6" } // palette[0]
+    { label:"Sleep", start:"22:00", end:"07:00", color: "#8b5cf6" }
   ];
-
-  // current user info
   let CURRENT_UID = null;
-
-  // this is the actual data your UI renders
   let blocks = DEFAULT_BLOCKS.slice();
 
-  function storeKeyFor(uid){
-    return `${BASE_STORE_KEY}__${uid}`;
-  }
-
+  function storeKeyFor(uid){ return `${BASE_STORE_KEY}__${uid}`; }
   function loadLocal(uid){
-    try {
-      const raw = localStorage.getItem(storeKeyFor(uid));
-      return raw ? JSON.parse(raw) : null;
-    } catch(e){
-      return null;
-    }
+    try { const raw = localStorage.getItem(storeKeyFor(uid)); return raw ? JSON.parse(raw) : null; }
+    catch(e){ return null; }
   }
-
-  function saveLocal(uid, data){
-    localStorage.setItem(storeKeyFor(uid), JSON.stringify(data));
-  }
+  function saveLocal(uid, data){ localStorage.setItem(storeKeyFor(uid), JSON.stringify(data)); }
 
   // ---------------
   // REMOTE SYNC
   // ---------------
-
-  // Try to load blocks from Supabase table "timetable_blocks"
   async function loadRemote() {
     const uid = CURRENT_UID;
     if (!uid) return false;
-
     const { data, error } = await supabase
       .from("timetable_blocks")
       .select("blocks")
       .eq("user_id", uid)
       .single();
-
-    if (!error && data && Array.isArray(data.blocks)) {
-      blocks = data.blocks;
-      return true;
-    }
-
+    if (!error && data && Array.isArray(data.blocks)) { blocks = data.blocks; return true; }
     return false;
   }
 
-  // Debounced save to Supabase
   let remoteSaveTimer = null;
   async function remoteSave() {
     const uid = CURRENT_UID;
     if (!uid) return;
-
-    await supabase
-      .from("timetable_blocks")
-      .upsert({
-        user_id: uid,
-        blocks,
-        updated_at: new Date().toISOString()
-      });
+    await supabase.from("timetable_blocks").upsert({
+      user_id: uid, blocks, updated_at: new Date().toISOString()
+    });
   }
-
-  function queueRemoteSave() {
-    clearTimeout(remoteSaveTimer);
-    remoteSaveTimer = setTimeout(remoteSave, 800);
-  }
+  function queueRemoteSave(){ clearTimeout(remoteSaveTimer); remoteSaveTimer = setTimeout(remoteSave, 800); }
 
   // -----------------
   // UTILITIES
@@ -279,7 +243,7 @@
     return (h?`${h}h`:"") + (m?`${h?" ":""}${m}m`:(h?"":"0m"));
   }
 
-  // ---- 24h-only time input helper (adds no new CSS) ----
+  // ---- 24h-only time input helper ----
   function makeTimeInput(initial, onCommit){
     const el = document.createElement('input');
     el.type = 'text';
@@ -292,9 +256,7 @@
 
     el.addEventListener('input', () => {
       const digits = el.value.replace(/\D/g, '').slice(0, 4);
-      el.value = (digits.length >= 3)
-        ? digits.slice(0,2) + ':' + digits.slice(2)
-        : digits;
+      el.value = (digits.length >= 3) ? digits.slice(0,2) + ':' + digits.slice(2) : digits;
     });
 
     el.addEventListener('blur', () => {
@@ -315,11 +277,100 @@
     return el;
   }
 
+  // --- small time menu (every 30 min) next to the input ---
+  function generateTimeOptions(step=30){
+    const out = [];
+    for(let m=0; m<1440; m+=step){ out.push(fmtHHMM(m)); }
+    return out;
+  }
+  function openTimeMenu(anchorEl, currentVal, onPick){
+    const opts = generateTimeOptions(30);
+    const rect = anchorEl.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.style.position = 'fixed';
+    menu.style.left = `${rect.left}px`;
+    menu.style.top = `${rect.bottom + 4}px`;
+    menu.style.maxHeight = '220px';
+    menu.style.overflow = 'auto';
+    menu.style.background = 'var(--card)';
+    menu.style.border = '1px solid rgba(255,255,255,.12)';
+    menu.style.borderRadius = '10px';
+    menu.style.padding = '6px';
+    menu.style.boxShadow = '0 10px 30px rgba(0,0,0,.4)';
+    menu.style.zIndex = '9999';
+    opts.forEach(t=>{
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = t;
+      btn.style.display = 'block';
+      btn.style.width = '100%';
+      btn.style.textAlign = 'left';
+      btn.style.background = 'transparent';
+      btn.style.border = '0';
+      btn.style.color = 'var(--text)';
+      btn.style.padding = '6px 10px';
+      btn.style.borderRadius = '8px';
+      btn.onmouseover = ()=> btn.style.background = 'rgba(255,255,255,.06)';
+      btn.onmouseout  = ()=> btn.style.background = 'transparent';
+      btn.onclick = ()=>{
+        close();
+        onPick(t);
+        render();
+      };
+      menu.appendChild(btn);
+    });
+    document.body.appendChild(menu);
+
+    // scroll to current
+    const idx = opts.indexOf(currentVal);
+    if (idx >= 0) {
+      const approxRowH = 30;
+      menu.scrollTop = Math.max(0, idx * approxRowH - 60);
+    }
+
+    function onDoc(e){
+      if (!menu.contains(e.target) && e.target !== anchorEl) close();
+    }
+    function onKey(e){
+      if (e.key === 'Escape') close();
+    }
+    function close(){
+      window.removeEventListener('mousedown', onDoc, true);
+      window.removeEventListener('keydown', onKey, true);
+      if (menu.parentNode) menu.parentNode.removeChild(menu);
+    }
+    window.addEventListener('mousedown', onDoc, true);
+    window.addEventListener('keydown', onKey, true);
+  }
+  function makeTimeField(initial, onCommit){
+    const wrap = document.createElement('span');
+    wrap.style.display = 'flex';
+    wrap.style.alignItems = 'center';
+    wrap.style.gap = '6px';
+
+    const input = makeTimeInput(initial, (v)=> onCommit(v));
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = '🕒';
+    btn.style.background = 'rgba(255,255,255,.06)';
+    btn.style.color = 'var(--text)';
+    btn.style.border = '1px solid rgba(255,255,255,.2)';
+    btn.style.borderRadius = '8px';
+    btn.style.padding = '6px 8px';
+    btn.style.fontWeight = '600';
+    btn.onclick = (e)=> {
+      e.stopPropagation();
+      openTimeMenu(btn, input.value || '08:00', (pick)=>{ input.value = pick; onCommit(pick); });
+    };
+
+    wrap.appendChild(input);
+    wrap.appendChild(btn);
+    return wrap;
+  }
+
   // Save locally for THIS USER + queue remote sync
   function save(){
-    if (CURRENT_UID) {
-      saveLocal(CURRENT_UID, blocks);
-    }
+    if (CURRENT_UID) { saveLocal(CURRENT_UID, blocks); }
     queueRemoteSave();
   }
 
@@ -332,13 +383,12 @@
   }
 
   function makeIntervals(list){
-    // Build non-wrapping intervals [start,end) in 0..1440
     const intervals = [];
     list.forEach(b=>{
       const s = parseHHMM(b.start), e = parseHHMM(b.end);
       if(s===null || e===null) return;
       let len = (e - s + 1440) % 1440;
-      if(len === 0) return; // ignore 0-length full-day
+      if(len === 0) return;
       if(s + len <= 1440){
         intervals.push({start:s, end:s+len, label:b.label, color:b.color});
       } else {
@@ -379,7 +429,6 @@
         gaps.push({start: merged[i].end, end: merged[i+1].start});
       }
     }
-    // wrap gap
     if(merged[merged.length-1].end !== 1440 || merged[0].start !== 0){
       const wrap = (merged[0].start + (1440 - merged[merged.length-1].end)) % 1440;
       if(wrap>0){
@@ -404,11 +453,8 @@
     return `M ${x0} ${y0} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x1} ${y1} L ${x2} ${y2} A ${rInner} ${rInner} 0 ${largeArc} 0 ${x3} ${y3} Z`;
   }
 
-  // half-hour ticks + hour ticks + numerals
   function drawFace(svg, cx, cy, rOuter, rInner, faceMode) {
     const ringWidth = rOuter - rInner;
-
-    // half-hour minor ticks (1 between each hour)
     const minorLen = Math.max(4, (rOuter - rInner) * 0.28);
     if (faceMode === "24") {
       for (let h = 0; h < 24; h++) {
@@ -427,19 +473,15 @@
         svg.appendChild(line);
       }
     }
-
-    // hour ticks + numerals
     const midR = (rInner + rOuter) / 2;
     const longLen = Math.max(10, ringWidth * 0.60);
     const medLen  = Math.max(8,  ringWidth * 0.45);
-
     for (let h = 0; h < 24; h++) {
       const a = -Math.PI/2 + (h/24)*TAU;
       const len = (h % 2 === 0) ? longLen : medLen;
       const r1 = rOuter - len, r2 = rOuter - 2;
       const x1 = cx + r1*Math.cos(a), y1 = cy + r1*Math.sin(a);
       const x2 = cx + r2*Math.cos(a), y2 = cy + r2*Math.sin(a);
-
       const line = document.createElementNS(svg.namespaceURI, "line");
       line.setAttribute("x1", x1); line.setAttribute("y1", y1);
       line.setAttribute("x2", x2); line.setAttribute("y2", y2);
@@ -448,7 +490,6 @@
       line.setAttribute("stroke-linecap", "round");
       svg.appendChild(line);
     }
-
     for (let h = 0; h < 24; h += 2) {
       const a = -Math.PI/2 + (h/24)*TAU;
       const tx = cx + midR*Math.cos(a);
@@ -475,7 +516,6 @@
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("width", W); svg.setAttribute("height", H);
 
-    // background ring
     const bgRing = document.createElementNS(svg.namespaceURI, "circle");
     bgRing.setAttribute("cx", cx); bgRing.setAttribute("cy", cy);
     bgRing.setAttribute("r", rOuter);
@@ -484,12 +524,10 @@
     bgRing.setAttribute("stroke-width", (rOuter - rInner));
     svg.appendChild(bgRing);
 
-    // build arcs from blocks
     const blockIntervals = makeIntervals(blocks);
     const merged = mergeIntervals(blockIntervals);
     const gaps = computeGaps(merged);
 
-    // gaps first
     gaps.forEach(g=>{
       const a0 = (g.start/1440) * TAU;
       const a1 = (g.end/1440) * TAU;
@@ -500,7 +538,6 @@
       svg.appendChild(path);
     });
 
-    // blocks
     blockIntervals.forEach(it=>{
       const a0 = (it.start/1440) * TAU;
       const a1 = (it.end/1440) * TAU;
@@ -511,10 +548,8 @@
       svg.appendChild(path);
     });
 
-    // ticks & numerals
     drawFace(svg, cx, cy, rOuter, rInner, "24");
 
-    // clock hand
     const handGroup = document.createElementNS(svg.namespaceURI, "g");
     handGroup.setAttribute("id", "handGroup");
     handGroup.style.transformOrigin = `${cx}px ${cy}px`;
@@ -546,7 +581,6 @@
     svg.appendChild(handGroup);
     host.appendChild(svg);
 
-    // status pill
     const cov = coverageMinutes(blockIntervals);
     const ov  = overlapMinutes(blockIntervals);
     const free = Math.max(0, 1440 - cov);
@@ -562,22 +596,20 @@
     totals.innerHTML = "";
     totals.appendChild(pill);
 
-    // spin the hand
     startHandAnimation(handGroup);
   }
 
   function render(){
-    save();          // persist changes (local + queue remote)
-    renderTable();   // update table
-    renderLegend();  // update legend
-    renderChart();   // redraw clock
+    save();
+    renderTable();
+    renderLegend();
+    renderChart();
   }
 
   // -----------------
   // CLOCK HAND
   // -----------------
   let handTimer = null;
-
   function formatTime(d){
     const hh = d.getHours();
     const mm = d.getMinutes().toString().padStart(2,'0');
@@ -585,13 +617,8 @@
     document.getElementById("timeLabel").textContent =
       `${hh.toString().padStart(2,'0')}:${mm}:${ss}`;
   }
-
   function startHandAnimation(handGroup){
-    if (handTimer) {
-      clearInterval(handTimer);
-      handTimer = null;
-    }
-
+    if (handTimer) { clearInterval(handTimer); handTimer = null; }
     const update = () => {
       const d = new Date();
       formatTime(d);
@@ -599,7 +626,6 @@
       const angleDeg = (h / 24) * 360;
       handGroup.style.transform = `rotate(${angleDeg}deg)`;
     };
-
     update();
     handTimer = setInterval(update, 100);
   }
@@ -622,12 +648,12 @@
       tdLabel.appendChild(inLabel);
 
       const tdStart = document.createElement("td");
-      const inStart = makeTimeInput(b.start || "08:00", (val) => { b.start = val; });
-      tdStart.appendChild(inStart);
+      const startField = makeTimeField(b.start || "08:00", (val) => { b.start = val; });
+      tdStart.appendChild(startField);
 
       const tdEnd = document.createElement("td");
-      const inEnd = makeTimeInput(b.end || "09:00", (val) => { b.end = val; });
-      tdEnd.appendChild(inEnd);
+      const endField = makeTimeField(b.end || "09:00", (val) => { b.end = val; });
+      tdEnd.appendChild(endField);
 
       const tdMin = document.createElement("td");
       tdMin.className = "minutesCell";
@@ -678,13 +704,7 @@
     const btn = document.getElementById('signOutBtn');
     try {
       if (btn) { btn.disabled = true; btn.textContent = 'Signing out…'; }
-
-      // OPTIONAL CLEANUP: wipe this user's local cache so next person on this device
-      // doesn't auto-fill from an old user.
-      if (CURRENT_UID) {
-        localStorage.removeItem(storeKeyFor(CURRENT_UID));
-      }
-
+      if (CURRENT_UID) { localStorage.removeItem(storeKeyFor(CURRENT_UID)); }
       await supabase.auth.signOut();
       location.href = LOGIN_URL;
     } catch (e) {
@@ -714,41 +734,26 @@
   // INIT FLOW
   // -----------------
   (async function init(){
-    // 1. must be logged in
     if (!(await requireAuth())) return;
 
-    // 2. figure out which user this is
     CURRENT_UID = await getUserId();
-    if (!CURRENT_UID) {
-      // weird edge case: session but no user (shouldn't happen)
-      location.href = LOGIN_URL;
-      return;
-    }
+    if (!CURRENT_UID) { location.href = LOGIN_URL; return; }
 
-    // 3. try to load from Supabase first
     const gotCloud = await loadRemote();
 
     if (!gotCloud) {
-      // 4. no cloud row yet, try local for THIS user
       const cached = loadLocal(CURRENT_UID);
-
       if (Array.isArray(cached) && cached.length) {
-        // we have local data for this user already on this device
         blocks = cached;
       } else {
-        // 5. true first-time user:
-        //    use DEFAULT_BLOCKS and immediately persist it
         blocks = DEFAULT_BLOCKS.slice();
         saveLocal(CURRENT_UID, blocks);
-        // push it to Supabase so it's available on other devices
         remoteSave();
       }
     } else {
-      // we got data from cloud, also sync it into local so this device is up to date
       saveLocal(CURRENT_UID, blocks);
     }
 
-    // 6. finally draw UI
     render();
   })();
 
