@@ -150,15 +150,18 @@
 
 <script>
   // =========================
-  // Supabase: replace these 3
+  // Supabase config (yours)
   // =========================
-  const SUPABASE_URL      = "https://uvidyiedolvtsissfkel.supabase.co"; // <-- REPLACE
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2aWR5aWVkb2x2dHNpc3Nma2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2OTIxMDgsImV4cCI6MjA3ODI2ODEwOH0.WF0WXdilYUooWm_VdUsrvXHdWPU26kvv9urYKOHHooQ";                    // <-- REPLACE
-  const LOGIN_URL         = "https://worlddude.github.io/Timetable-app/Login"; // <-- REPLACE
+  const SUPABASE_URL      = "https://uvidyiedolvtsissfkel.supabase.co"; // your project URL
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2aWR5aWVkb2x2dHNpc3Nma2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2OTIxMDgsImV4cCI6MjA3ODI2ODEwOH0.WF0WXdilYUooWm_VdUsrvXHdWPU26kvv9urYKOHHooQ";
+  const LOGIN_URL         = "https://worlddude.github.io/Timetable-app/Login";
 
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // Require a valid session, otherwise send to login page
+  // -----------------
+  // AUTH HELPERS
+  // -----------------
+
   async function requireAuth() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -173,10 +176,50 @@
     return user?.id || null;
   }
 
-  // Load blocks from Supabase (if a row exists)
+  // ---------------
+  // PER-USER STATE
+  // ---------------
+
+  // localStorage key prefix
+  const BASE_STORE_KEY = "timetableBlocks_v3";
+
+  // brand new users start like this:
+  const DEFAULT_BLOCKS = [
+    { label:"Sleep", start:"22:00", end:"07:00", color: "#8b5cf6" } // palette[0]
+  ];
+
+  // current user info
+  let CURRENT_UID = null;
+
+  // this is the actual data your UI renders
+  let blocks = DEFAULT_BLOCKS.slice();
+
+  function storeKeyFor(uid){
+    return `${BASE_STORE_KEY}__${uid}`;
+  }
+
+  function loadLocal(uid){
+    try {
+      const raw = localStorage.getItem(storeKeyFor(uid));
+      return raw ? JSON.parse(raw) : null;
+    } catch(e){
+      return null;
+    }
+  }
+
+  function saveLocal(uid, data){
+    localStorage.setItem(storeKeyFor(uid), JSON.stringify(data));
+  }
+
+  // ---------------
+  // REMOTE SYNC
+  // ---------------
+
+  // Try to load blocks from Supabase table "timetable_blocks"
   async function loadRemote() {
-    const uid = await getUserId();
+    const uid = CURRENT_UID;
     if (!uid) return false;
+
     const { data, error } = await supabase
       .from("timetable_blocks")
       .select("blocks")
@@ -187,24 +230,33 @@
       blocks = data.blocks;
       return true;
     }
+
     return false;
   }
 
-  // Debounced cloud save
+  // Debounced save to Supabase
   let remoteSaveTimer = null;
   async function remoteSave() {
-    const uid = await getUserId();
+    const uid = CURRENT_UID;
     if (!uid) return;
+
     await supabase
       .from("timetable_blocks")
-      .upsert({ user_id: uid, blocks, updated_at: new Date().toISOString() });
+      .upsert({
+        user_id: uid,
+        blocks,
+        updated_at: new Date().toISOString()
+      });
   }
+
   function queueRemoteSave() {
     clearTimeout(remoteSaveTimer);
     remoteSaveTimer = setTimeout(remoteSave, 800);
   }
 
-  // ===== Utilities
+  // -----------------
+  // UTILITIES
+  // -----------------
   const TAU = Math.PI * 2;
   const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
   const palette = ["#8b5cf6","#06b6d4","#22c55e","#f59e0b","#ef4444","#3b82f6","#a855f7","#14b8a6","#84cc16","#eab308","#f97316","#ec4899"];
@@ -227,22 +279,15 @@
     return (h?`${h}h`:"") + (m?`${h?" ":""}${m}m`:(h?"":"0m"));
   }
 
-  // ===== State
-  const STORE_KEY = "timetableBlocks_v3";
-  let blocks = JSON.parse(localStorage.getItem(STORE_KEY) || "null") || [
-    { label:"Sleep",   start:"21:00", end:"07:00", color: palette[0] },
-    { label:"School",  start:"08:30", end:"14:30", color: palette[1] },
-    { label:"Gym",     start:"15:30", end:"17:00", color: palette[2] },
-    { label:"Study",   start:"18:30", end:"19:30", color: palette[3] }
-  ];
-
-  // Save locally + queue cloud sync
+  // Save locally for THIS USER + queue remote sync
   function save(){
-    localStorage.setItem(STORE_KEY, JSON.stringify(blocks));
+    if (CURRENT_UID) {
+      saveLocal(CURRENT_UID, blocks);
+    }
     queueRemoteSave();
   }
 
-  // Compute minutes for a block (wrap-aware)
+  // Get total minutes for a block (supports wrap past midnight)
   function calcMinutes(b){
     const s = parseHHMM(b.start), e = parseHHMM(b.end);
     if(s===null || e===null) return 0;
@@ -250,14 +295,14 @@
     return len;
   }
 
-  // Build non-wrapping intervals [start,end) in 0..1440 from blocks
   function makeIntervals(list){
+    // Build non-wrapping intervals [start,end) in 0..1440
     const intervals = [];
     list.forEach(b=>{
       const s = parseHHMM(b.start), e = parseHHMM(b.end);
       if(s===null || e===null) return;
       let len = (e - s + 1440) % 1440;
-      if(len === 0) return; // ignore zero-length (full-day not supported)
+      if(len === 0) return; // ignore 0-length full-day
       if(s + len <= 1440){
         intervals.push({start:s, end:s+len, label:b.label, color:b.color});
       } else {
@@ -309,7 +354,9 @@
     return gaps.sort((a,b)=>a.start-b.start);
   }
 
-  // ===== SVG helpers
+  // -----------------
+  // CLOCK DRAWING
+  // -----------------
   function donutArcPath(cx, cy, rOuter, rInner, startAngle, endAngle) {
     const largeArc = ((endAngle - startAngle + TAU) % TAU) > Math.PI ? 1 : 0;
     const a0 = -Math.PI/2 + startAngle;
@@ -321,11 +368,11 @@
     return `M ${x0} ${y0} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x1} ${y1} L ${x2} ${y2} A ${rInner} ${rInner} 0 ${largeArc} 0 ${x3} ${y3} Z`;
   }
 
-  // Draw the clock face (minor ticks = half-hours)
+  // half-hour ticks + hour ticks + numerals
   function drawFace(svg, cx, cy, rOuter, rInner, faceMode) {
     const ringWidth = rOuter - rInner;
 
-    // Half-hour minor ticks (one between each hour)
+    // half-hour minor ticks (1 between each hour)
     const minorLen = Math.max(4, (rOuter - rInner) * 0.28);
     if (faceMode === "24") {
       for (let h = 0; h < 24; h++) {
@@ -345,16 +392,18 @@
       }
     }
 
-    // Hour ticks + numerals (24h)
+    // hour ticks + numerals
     const midR = (rInner + rOuter) / 2;
     const longLen = Math.max(10, ringWidth * 0.60);
     const medLen  = Math.max(8,  ringWidth * 0.45);
+
     for (let h = 0; h < 24; h++) {
       const a = -Math.PI/2 + (h/24)*TAU;
       const len = (h % 2 === 0) ? longLen : medLen;
       const r1 = rOuter - len, r2 = rOuter - 2;
       const x1 = cx + r1*Math.cos(a), y1 = cy + r1*Math.sin(a);
       const x2 = cx + r2*Math.cos(a), y2 = cy + r2*Math.sin(a);
+
       const line = document.createElementNS(svg.namespaceURI, "line");
       line.setAttribute("x1", x1); line.setAttribute("y1", y1);
       line.setAttribute("x2", x2); line.setAttribute("y2", y2);
@@ -363,6 +412,7 @@
       line.setAttribute("stroke-linecap", "round");
       svg.appendChild(line);
     }
+
     for (let h = 0; h < 24; h += 2) {
       const a = -Math.PI/2 + (h/24)*TAU;
       const tx = cx + midR*Math.cos(a);
@@ -379,7 +429,6 @@
     }
   }
 
-  // ===== Chart rendering (absolute time)
   function renderChart(){
     const host = document.getElementById("chartHost");
     host.innerHTML = "";
@@ -390,7 +439,7 @@
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("width", W); svg.setAttribute("height", H);
 
-    // Background ring
+    // background ring
     const bgRing = document.createElementNS(svg.namespaceURI, "circle");
     bgRing.setAttribute("cx", cx); bgRing.setAttribute("cy", cy);
     bgRing.setAttribute("r", rOuter);
@@ -399,12 +448,12 @@
     bgRing.setAttribute("stroke-width", (rOuter - rInner));
     svg.appendChild(bgRing);
 
-    // Build intervals from blocks
+    // build arcs from blocks
     const blockIntervals = makeIntervals(blocks);
     const merged = mergeIntervals(blockIntervals);
     const gaps = computeGaps(merged);
 
-    // Draw gap arcs first
+    // gaps first
     gaps.forEach(g=>{
       const a0 = (g.start/1440) * TAU;
       const a1 = (g.end/1440) * TAU;
@@ -415,7 +464,7 @@
       svg.appendChild(path);
     });
 
-    // Draw each block interval as an arc at its absolute time
+    // blocks
     blockIntervals.forEach(it=>{
       const a0 = (it.start/1440) * TAU;
       const a1 = (it.end/1440) * TAU;
@@ -426,10 +475,10 @@
       svg.appendChild(path);
     });
 
-    // Ticks & numerals — always 24h now
+    // ticks & numerals
     drawFace(svg, cx, cy, rOuter, rInner, "24");
 
-    // Clock hand
+    // clock hand
     const handGroup = document.createElementNS(svg.namespaceURI, "g");
     handGroup.setAttribute("id", "handGroup");
     handGroup.style.transformOrigin = `${cx}px ${cy}px`;
@@ -453,52 +502,65 @@
 
     const hub = document.createElementNS(svg.namespaceURI, "circle");
     hub.setAttribute("cx", cx); hub.setAttribute("cy", cy); hub.setAttribute("r", 4.5);
-    hub.setAttribute("fill", "#ffffff"); hub.setAttribute("stroke", "rgba(0,0,0,.45)"); hub.setAttribute("stroke-width", "2");
+    hub.setAttribute("fill", "#ffffff");
+    hub.setAttribute("stroke", "rgba(0,0,0,.45)");
+    hub.setAttribute("stroke-width", "2");
     handGroup.appendChild(hub);
 
     svg.appendChild(handGroup);
     host.appendChild(svg);
 
-    // Coverage & overlap status
+    // status pill
     const cov = coverageMinutes(blockIntervals);
     const ov  = overlapMinutes(blockIntervals);
     const free = Math.max(0, 1440 - cov);
     const totals = document.getElementById("totals");
     const pill = document.createElement("span");
+
     let cls = "ok", msg = "All scheduled — 24h covered";
     if (ov > 0) { cls = "err"; msg = `Overlap: ${minutesToHM(ov)}`; }
     else if (free > 0) { cls = "warn"; msg = `Free/unallocated: ${minutesToHM(free)}`; }
-    pill.className = `pill ${cls}`; pill.textContent = msg;
-    totals.innerHTML = ""; totals.appendChild(pill);
 
-    // Start/refresh the hand
+    pill.className = `pill ${cls}`;
+    pill.textContent = msg;
+    totals.innerHTML = "";
+    totals.appendChild(pill);
+
+    // spin the hand
     startHandAnimation(handGroup);
   }
 
   function render(){
-    save();
-    renderTable();
-    renderLegend();
-    renderChart();
+    save();          // persist changes (local + queue remote)
+    renderTable();   // update table
+    renderLegend();  // update legend
+    renderChart();   // redraw clock
   }
 
-  // ===== Hand animation
+  // -----------------
+  // CLOCK HAND
+  // -----------------
   let handTimer = null;
+
   function formatTime(d){
     const hh = d.getHours();
     const mm = d.getMinutes().toString().padStart(2,'0');
     const ss = d.getSeconds().toString().padStart(2,'0');
-    document.getElementById("timeLabel").textContent = `${hh.toString().padStart(2,'0')}:${mm}:${ss}`;
+    document.getElementById("timeLabel").textContent =
+      `${hh.toString().padStart(2,'0')}:${mm}:${ss}`;
   }
 
   function startHandAnimation(handGroup){
-    if (handTimer) { clearInterval(handTimer); handTimer = null; }
+    if (handTimer) {
+      clearInterval(handTimer);
+      handTimer = null;
+    }
 
     const update = () => {
       const d = new Date();
       formatTime(d);
       const h = d.getHours() + d.getMinutes()/60 + d.getSeconds()/3600;
-      const angleDeg = (h / 24) * 360;       // 24h rotation
+      const angleDeg = (h / 24) * 360;
       handGroup.style.transform = `rotate(${angleDeg}deg)`;
     };
 
@@ -506,7 +568,9 @@
     handTimer = setInterval(update, 100);
   }
 
-  // ===== UI: Table + Legend
+  // -----------------
+  // TABLE + LEGEND UI
+  // -----------------
   function renderTable(){
     const tbody = document.getElementById("tbody");
     tbody.innerHTML = "";
@@ -515,21 +579,25 @@
 
       const tdLabel = document.createElement("td");
       const inLabel = document.createElement("input");
-      inLabel.type = "text"; inLabel.value = b.label;
-      // let the user type without losing focus
+      inLabel.type = "text";
+      inLabel.value = b.label;
       inLabel.oninput = () => { b.label = inLabel.value; };
       inLabel.onblur  = () => { render(); };
       tdLabel.appendChild(inLabel);
 
       const tdStart = document.createElement("td");
       const inStart = document.createElement("input");
-      inStart.type = "time"; inStart.value = b.start || "08:00"; inStart.step = 60;
+      inStart.type = "time";
+      inStart.value = b.start || "08:00";
+      inStart.step = 60;
       inStart.onchange = () => { b.start = inStart.value; render(); };
       tdStart.appendChild(inStart);
 
       const tdEnd = document.createElement("td");
       const inEnd = document.createElement("input");
-      inEnd.type = "time"; inEnd.value = b.end || "09:00"; inEnd.step = 60;
+      inEnd.type = "time";
+      inEnd.value = b.end || "09:00";
+      inEnd.step = 60;
       inEnd.onchange = () => { b.end = inEnd.value; render(); };
       tdEnd.appendChild(inEnd);
 
@@ -539,7 +607,8 @@
 
       const tdColor = document.createElement("td");
       const inColor = document.createElement("input");
-      inColor.type = "color"; inColor.value = b.color;
+      inColor.type = "color";
+      inColor.value = b.color;
       inColor.oninput = () => { b.color = inColor.value; render(); };
       tdColor.appendChild(inColor);
 
@@ -560,47 +629,100 @@
   }
 
   function renderLegend(){
-    const leg = document.getElementById("legend"); leg.innerHTML = "";
+    const leg = document.getElementById("legend");
+    leg.innerHTML = "";
     blocks.forEach((b) => {
       const mins = calcMinutes(b);
       const row = document.createElement("div");
       row.className = "item";
-      row.innerHTML = `<span class="swatch" style="background:${b.color}"></span>
-                       <span>${b.label} <span style="color:#fff">${b.start}</span>–<span style="color:#fff">${b.end}</span></span>
-                       <span style="margin-left:auto;color:#fff">${minutesToHM(mins)}</span>`;
+      row.innerHTML = `
+        <span class="swatch" style="background:${b.color}"></span>
+        <span>${b.label} <span style="color:#fff">${b.start}</span>–<span style="color:#fff">${b.end}</span></span>
+        <span style="margin-left:auto;color:#fff">${minutesToHM(mins)}</span>`;
       leg.appendChild(row);
     });
   }
 
-  // ===== Events
+  // -----------------
+  // BUTTON HANDLERS
+  // -----------------
+  async function signOut() {
+    const btn = document.getElementById('signOutBtn');
+    try {
+      if (btn) { btn.disabled = true; btn.textContent = 'Signing out…'; }
+
+      // OPTIONAL CLEANUP: wipe this user's local cache so next person on this device
+      // doesn't auto-fill from an old user.
+      if (CURRENT_UID) {
+        localStorage.removeItem(storeKeyFor(CURRENT_UID));
+      }
+
+      await supabase.auth.signOut();
+      location.href = LOGIN_URL;
+    } catch (e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Sign out'; }
+      alert('Could not sign out: ' + (e?.message || e));
+    }
+  }
+
   document.getElementById("addRowBtn").onclick = () => {
     const now = new Date();
     const startMin = now.getHours()*60 + now.getMinutes();
     const endMin = (startMin + 60) % 1440;
     const nextColor = palette[blocks.length % palette.length];
-    blocks.push({ label:"New Block", start: fmtHHMM(startMin), end: fmtHHMM(endMin), color: nextColor });
+    blocks.push({
+      label:"New Block",
+      start: fmtHHMM(startMin),
+      end:   fmtHHMM(endMin),
+      color: nextColor
+    });
     render();
   };
-  document.getElementById("handMode").onchange = () => renderChart();
-  document.getElementById('signOutBtn').onclick = signOut;
 
-  // ===== Init: require auth, try cloud load, then render once
+  document.getElementById("handMode").onchange = () => renderChart();
+  document.getElementById("signOutBtn").onclick = signOut;
+
+  // -----------------
+  // INIT FLOW
+  // -----------------
   (async function init(){
+    // 1. must be logged in
     if (!(await requireAuth())) return;
-    const gotCloud = await loadRemote(); // may set blocks from Supabase
-    render(); // render with whichever data we have (cloud if found, else local)
+
+    // 2. figure out which user this is
+    CURRENT_UID = await getUserId();
+    if (!CURRENT_UID) {
+      // weird edge case: session but no user (shouldn't happen)
+      location.href = LOGIN_URL;
+      return;
+    }
+
+    // 3. try to load from Supabase first
+    const gotCloud = await loadRemote();
+
+    if (!gotCloud) {
+      // 4. no cloud row yet, try local for THIS user
+      const cached = loadLocal(CURRENT_UID);
+
+      if (Array.isArray(cached) && cached.length) {
+        // we have local data for this user already on this device
+        blocks = cached;
+      } else {
+        // 5. true first-time user:
+        //    use DEFAULT_BLOCKS and immediately persist it
+        blocks = DEFAULT_BLOCKS.slice();
+        saveLocal(CURRENT_UID, blocks);
+        // push it to Supabase so it's available on other devices
+        remoteSave();
+      }
+    } else {
+      // we got data from cloud, also sync it into local so this device is up to date
+      saveLocal(CURRENT_UID, blocks);
+    }
+
+    // 6. finally draw UI
+    render();
   })();
-async function signOut() {
-  const btn = document.getElementById('signOutBtn');
-  try {
-    if (btn) { btn.disabled = true; btn.textContent = 'Signing out…'; }
-    await supabase.auth.signOut();
-    location.href = LOGIN_URL;
-  } catch (e) {
-    if (btn) { btn.disabled = false; btn.textContent = 'Sign out'; }
-    alert('Could not sign out: ' + (e?.message || e));
-  }
-}
 
 </script>
 </body>
