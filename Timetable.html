@@ -27,9 +27,35 @@
     box-shadow: 0 10px 30px rgba(0,0,0,.4), inset 0 0 0 1px rgba(255,255,255,.05);
   }
 
-  .header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
   .header h1 { font-size: 18px; margin: 0; }
-  .sub { color: var(--muted); font-size: 12px; margin: 0; }
+  .sub { color: var(--muted); font-size: 12px; margin: 4px 0 0 0; }
+
+  .date-nav-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .date-nav-row button {
+    background: rgba(255,255,255,.06);
+    color: var(--text);
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .date-nav-row button.primary-nav {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(124,130,255,.35);
+  }
 
   .chart { display: grid; place-items: center; padding: 4px 0; position: relative; }
   #chartHost { position: relative; width: 380px; height: 380px; }
@@ -90,6 +116,21 @@
   .err { background: rgba(253,164,175,.10); color: #fda4af; border: 1px solid rgba(253,164,175,.35); }
 
   .footer-note { color: var(--muted); font-size: 12px; margin-top: 10px; }
+
+  /* Read-only carry-over rows (from previous day) */
+  .readonly-row { opacity: 0.65; }
+  .readonly-row td { font-style: italic; }
+  .readonly-badge {
+    display: inline-block;
+    margin-top: 2px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border: 1px solid rgba(255,255,255,.25);
+    color: var(--muted);
+  }
 </style>
 </head>
 <body>
@@ -98,7 +139,15 @@
       <div class="header">
         <div>
           <h1>Plan your day</h1>
-          <p class="sub"></em></p>
+          <p class="sub" id="dateLabel"></p>
+          <div class="date-nav-row">
+            <button id="prevDayBtn" type="button" aria-label="Previous day">◀</button>
+            <button id="todayBtn" type="button" class="primary-nav">I dag</button>
+            <button id="nextDayBtn" type="button" aria-label="Next day">▶</button>
+            <button id="calendarBtn" type="button" aria-label="Open calendar">📅</button>
+            <input type="date" id="datePicker"
+                   style="position:absolute; opacity:0; pointer-events:none; width:0; height:0;" />
+          </div>
         </div>
         <div class="row" id="headerControls">
           <button id="signOutBtn" type="button" aria-label="Sign out">Sign out</button>
@@ -137,588 +186,829 @@
       <div class="row" style="margin-top:10px; gap:8px;">
         <button id="addRowBtn" type="button" class="primary">+ Add block</button>
       </div>
-      <p class="footer-note"></p>
+      <p class="footer-note" id="footerNote"></p>
     </div>
   </div>
 
-<!-- Supabase JS -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-<script>
-  // =========================
-  // Supabase config (yours)
-  // =========================
-  const SUPABASE_URL      = "https://uvidyiedolvtsissfkel.supabase.co"; // your project URL
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2aWR5aWVkb2x2dHNpc3Nma2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2OTIxMDgsImV4cCI6MjA3ODI2ODEwOH0.WF0WXdilYUooWm_VdUsrvXHdWPU26kvv9urYKOHHooQ";
-  const LOGIN_URL         = "https://worlddude.github.io/Timetable-app/Login";
+  <script>
+    // =========================
+    // Supabase config (yours)
+    // =========================
+    const SUPABASE_URL      = "https://uvidyiedolvtsissfkel.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2aWR5aWVkb2x2dHNpc3Nma2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2OTIxMDgsImV4cCI6MjA3ODI2ODEwOH0.WF0WXdilYUooWm_VdUsrvXHdWPU26kvv9urYKOHHooQ";
+    const LOGIN_URL         = "https://worlddude.github.io/Timetable-app/Login";
 
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // -----------------
-  // AUTH HELPERS
-  // -----------------
+    // -----------------
+    // AUTH HELPERS
+    // -----------------
 
-  async function requireAuth() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      location.href = LOGIN_URL;
-      return false;
-    }
-    return true;
-  }
-
-  async function getUserId() {
-    const { data: { user } } = await supabase.auth.getUser();
-    return user?.id || null;
-  }
-
-  // ---------------
-  // PER-USER STATE
-  // ---------------
-
-  // localStorage key prefix
-  const BASE_STORE_KEY = "timetableBlocks_v3";
-
-  // brand new users start like this:
-  const DEFAULT_BLOCKS = [
-    { label:"Sleep", start:"22:00", end:"07:00", color: "#8b5cf6" } // palette[0]
-  ];
-
-  // current user info
-  let CURRENT_UID = null;
-
-  // this is the actual data your UI renders
-  let blocks = DEFAULT_BLOCKS.slice();
-
-  function storeKeyFor(uid){
-    return `${BASE_STORE_KEY}__${uid}`;
-  }
-
-  function loadLocal(uid){
-    try {
-      const raw = localStorage.getItem(storeKeyFor(uid));
-      return raw ? JSON.parse(raw) : null;
-    } catch(e){
-      return null;
-    }
-  }
-
-  function saveLocal(uid, data){
-    localStorage.setItem(storeKeyFor(uid), JSON.stringify(data));
-  }
-
-  // ---------------
-  // REMOTE SYNC
-  // ---------------
-
-  // Try to load blocks from Supabase table "timetable_blocks"
-  async function loadRemote() {
-    const uid = CURRENT_UID;
-    if (!uid) return false;
-
-    const { data, error } = await supabase
-      .from("timetable_blocks")
-      .select("blocks")
-      .eq("user_id", uid)
-      .single();
-
-    if (!error && data && Array.isArray(data.blocks)) {
-      blocks = data.blocks;
+    async function requireAuth() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        location.href = LOGIN_URL;
+        return false;
+      }
       return true;
     }
 
-    return false;
-  }
-
-  // Debounced save to Supabase
-  let remoteSaveTimer = null;
-  async function remoteSave() {
-    const uid = CURRENT_UID;
-    if (!uid) return;
-
-    await supabase
-      .from("timetable_blocks")
-      .upsert({
-        user_id: uid,
-        blocks,
-        updated_at: new Date().toISOString()
-      });
-  }
-
-  function queueRemoteSave() {
-    clearTimeout(remoteSaveTimer);
-    remoteSaveTimer = setTimeout(remoteSave, 800);
-  }
-
-  // -----------------
-  // UTILITIES
-  // -----------------
-  const TAU = Math.PI * 2;
-  const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
-  const palette = ["#8b5cf6","#06b6d4","#22c55e","#f59e0b","#ef4444","#3b82f6","#a855f7","#14b8a6","#84cc16","#eab308","#f97316","#ec4899"];
-
-  function parseHHMM(str){
-    if(!str) return null;
-    const m = /^(\d{1,2}):(\d{2})$/.exec(str.trim());
-    if(!m) return null;
-    let h = +m[1], mi = +m[2];
-    if(h<0||h>23||mi<0||mi>59) return null;
-    return h*60 + mi;
-  }
-  function fmtHHMM(min){
-    min = ((min % 1440) + 1440) % 1440;
-    const h = Math.floor(min/60), m = min%60;
-    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-  }
-  function minutesToHM(min) {
-    const h = Math.floor(min / 60), m = min % 60;
-    return (h?`${h}h`:"") + (m?`${h?" ":""}${m}m`:(h?"":"0m"));
-  }
-
-  // Save locally for THIS USER + queue remote sync
-  function save(){
-    if (CURRENT_UID) {
-      saveLocal(CURRENT_UID, blocks);
+    async function getUserId() {
+      const { data: { user } } = await supabase.auth.getUser();
+      return user?.id || null;
     }
-    queueRemoteSave();
-  }
 
-  // Get total minutes for a block (supports wrap past midnight)
-  function calcMinutes(b){
-    const s = parseHHMM(b.start), e = parseHHMM(b.end);
-    if(s===null || e===null) return 0;
-    const len = (e - s + 1440) % 1440;
-    return len;
-  }
+    // ---------------
+    // PER-USER STATE
+    // ---------------
 
-  function makeIntervals(list){
-    // Build non-wrapping intervals [start,end) in 0..1440
-    const intervals = [];
-    list.forEach(b=>{
+    // localStorage key prefix
+    const BASE_STORE_KEY = "timetableBlocks_v3";
+
+    // brand new users start like this (for their first day):
+    const DEFAULT_BLOCKS = [
+      { label:"Sleep", start:"22:00", end:"07:00", color: "#8b5cf6" }
+    ];
+
+    // current user info
+    let CURRENT_UID = null;
+
+    // date that is currently selected in the UI
+    let selectedDate = new Date();
+
+    // Map of dateKey -> array of blocks
+    // dateKey format: "YYYY-MM-DD"
+    let dayMap = {};
+
+    // ---------------
+    // DATE HELPERS
+    // ---------------
+
+    function dateToKey(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+
+    function keyToDate(key) {
+      const [y, m, d] = key.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    }
+
+    function currentDateKey() {
+      return dateToKey(selectedDate);
+    }
+
+    function previousDateKey(key) {
+      const d = keyToDate(key);
+      d.setDate(d.getDate() - 1);
+      return dateToKey(d);
+    }
+
+    function getBlocksForKey(key) {
+      if (!dayMap[key]) {
+        dayMap[key] = [];
+      }
+      return dayMap[key];
+    }
+
+    function getCurrentBlocks() {
+      return getBlocksForKey(currentDateKey());
+    }
+
+    function updateDateLabel() {
+      const el = document.getElementById("dateLabel");
+      if (!el) return;
+      const opts = { weekday: "long", year: "numeric", month: "long", day: "numeric" };
+      el.textContent = selectedDate.toLocaleDateString("da-DK", opts);
+      const picker = document.getElementById("datePicker");
+      if (picker) {
+        picker.value = currentDateKey();
+      }
+    }
+
+    // ---------------
+    // LOCAL STORAGE
+    // ---------------
+
+    function storeKeyFor(uid){
+      return `${BASE_STORE_KEY}__${uid}`;
+    }
+
+    function loadLocal(uid){
+      try {
+        const raw = localStorage.getItem(storeKeyFor(uid));
+        return raw ? JSON.parse(raw) : null;
+      } catch(e){
+        return null;
+      }
+    }
+
+    function saveLocal(uid, data){
+      localStorage.setItem(storeKeyFor(uid), JSON.stringify(data));
+    }
+
+    // ---------------
+    // REMOTE SYNC
+    // ---------------
+
+    // Try to load blocks from Supabase table "timetable_blocks"
+    async function loadRemote() {
+      const uid = CURRENT_UID;
+      if (!uid) return false;
+
+      const { data, error } = await supabase
+        .from("timetable_blocks")
+        .select("blocks")
+        .eq("user_id", uid)
+        .single();
+
+      if (!error && data && data.blocks != null) {
+        // Backwards compatible:
+        // - old format: blocks is an ARRAY (single template)
+        // - new format: blocks is an OBJECT { "YYYY-MM-DD": [ ... ] }
+        if (Array.isArray(data.blocks)) {
+          const todayKey = dateToKey(new Date());
+          dayMap = {};
+          dayMap[todayKey] = data.blocks;
+        } else if (typeof data.blocks === "object") {
+          dayMap = data.blocks;
+        }
+        return true;
+      }
+
+      return false;
+    }
+
+    // Debounced save to Supabase
+    let remoteSaveTimer = null;
+
+    async function remoteSave() {
+      const uid = CURRENT_UID;
+      if (!uid) return;
+
+      await supabase
+        .from("timetable_blocks")
+        .upsert({
+          user_id: uid,
+          blocks: dayMap,
+          updated_at: new Date().toISOString()
+        });
+    }
+
+    function queueRemoteSave() {
+      clearTimeout(remoteSaveTimer);
+      remoteSaveTimer = setTimeout(remoteSave, 800);
+    }
+
+    // Save locally for THIS USER + queue remote sync
+    function save(){
+      if (CURRENT_UID) {
+        saveLocal(CURRENT_UID, dayMap);
+      }
+      queueRemoteSave();
+    }
+
+    // -----------------
+    // UTILITIES
+    // -----------------
+    const TAU = Math.PI * 2;
+    const palette = ["#8b5cf6","#06b6d4","#22c55e","#f59e0b","#ef4444","#3b82f6","#a855f7","#14b8a6","#84cc16","#eab308","#f97316","#ec4899"];
+
+    function parseHHMM(str){
+      if(!str) return null;
+      const m = /^(\d{1,2}):(\d{2})$/.exec(str.trim());
+      if(!m) return null;
+      let h = +m[1], mi = +m[2];
+      if(h<0||h>23||mi<0||mi>59) return null;
+      return h*60 + mi;
+    }
+    function fmtHHMM(min){
+      min = ((min % 1440) + 1440) % 1440;
+      const h = Math.floor(min/60), m = min%60;
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    }
+    function minutesToHM(min) {
+      const h = Math.floor(min / 60), m = min % 60;
+      return (h?`${h}h`:"") + (m?`${h?" ":""}${m}m`:(h?"":"0m"));
+    }
+
+    // Get total minutes for a block (supports wrap past midnight)
+    function calcMinutes(b){
       const s = parseHHMM(b.start), e = parseHHMM(b.end);
-      if(s===null || e===null) return;
-      let len = (e - s + 1440) % 1440;
-      if(len === 0) return; // ignore 0-length full-day
-      if(s + len <= 1440){
-        intervals.push({start:s, end:s+len, label:b.label, color:b.color});
-      } else {
-        intervals.push({start:s, end:1440, label:b.label, color:b.color});
-        intervals.push({start:0, end:(s+len)-1440, label:b.label, color:b.color});
-      }
-    });
-    return intervals.sort((a,b)=>a.start-b.start);
-  }
-
-  function mergeIntervals(intervals){
-    const merged = [];
-    for(const it of intervals){
-      if(!merged.length || it.start > merged[merged.length-1].end){
-        merged.push({...it});
-      } else {
-        merged[merged.length-1].end = Math.max(merged[merged.length-1].end, it.end);
-      }
+      if(s===null || e===null) return 0;
+      const len = (e - s + 1440) % 1440;
+      return len;
     }
-    return merged;
-  }
 
-  function coverageMinutes(intervals){
-    const m = mergeIntervals(intervals);
-    return m.reduce((s,i)=>s+(i.end-i.start),0);
-  }
+    // Build intervals [start,end) within this day (0..1440) for chart and coverage.
+    // Includes:
+    // - full blocks that *start* this day (editable)
+    // - "carry over" segments from previous day that pass midnight (read-only)
+    function makeDailyIntervalsFor(dateKey) {
+      const intervals = [];
+      const todayBlocks = getBlocksForKey(dateKey);
+      const prevBlocks = getBlocksForKey(previousDateKey(dateKey));
 
-  function overlapMinutes(intervals){
-    const sum = intervals.reduce((s,i)=>s+(i.end-i.start),0);
-    return Math.max(0, sum - coverageMinutes(intervals));
-  }
+      // blocks that start today (editable)
+      todayBlocks.forEach(b => {
+        const s = parseHHMM(b.start);
+        const e = parseHHMM(b.end);
+        if (s === null || e === null) return;
+        const len = (e - s + 1440) % 1440;
+        if (len === 0) return; // ignore full-day / zero-length
 
-  function computeGaps(merged){
-    const gaps = [];
-    if(!merged.length){ gaps.push({start:0, end:1440}); return gaps; }
-    for(let i=0;i<merged.length-1;i++){
-      if(merged[i].end < merged[i+1].start){
-        gaps.push({start: merged[i].end, end: merged[i+1].start});
-      }
+        if (s < e) {
+          // simple block within this day
+          intervals.push({
+            start: s,
+            end: e,
+            label: b.label,
+            color: b.color,
+            isCarry: false
+          });
+        } else {
+          // wraps past midnight: today shows only the evening part [start, 24:00)
+          intervals.push({
+            start: s,
+            end: 1440,
+            label: b.label,
+            color: b.color,
+            isCarry: false
+          });
+        }
+      });
+
+      // carry over from previous day (read-only)
+      prevBlocks.forEach(b => {
+        const s = parseHHMM(b.start);
+        const e = parseHHMM(b.end);
+        if (s === null || e === null) return;
+        const len = (e - s + 1440) % 1440;
+        if (len === 0) return;
+        // if it wraps, then part belongs to this day from 00:00 to end time
+        if (s > e) {
+          intervals.push({
+            start: 0,
+            end: e,
+            label: b.label,
+            color: b.color,
+            isCarry: true
+          });
+        }
+      });
+
+      return intervals.sort((a,b)=>a.start - b.start);
     }
-    // wrap gap
-    if(merged[merged.length-1].end !== 1440 || merged[0].start !== 0){
-      const wrap = (merged[0].start + (1440 - merged[merged.length-1].end)) % 1440;
-      if(wrap>0){
-        gaps.push({start: merged[merged.length-1].end, end: 1440});
-        if(merged[0].start > 0) gaps.push({start:0, end: merged[0].start});
+
+    function mergeIntervals(intervals){
+      const merged = [];
+      for(const it of intervals){
+        if(!merged.length || it.start > merged[merged.length-1].end){
+          merged.push({start: it.start, end: it.end});
+        } else {
+          merged[merged.length-1].end = Math.max(merged[merged.length-1].end, it.end);
+        }
       }
+      return merged;
     }
-    return gaps.sort((a,b)=>a.start-b.start);
-  }
 
-  // -----------------
-  // CLOCK DRAWING
-  // -----------------
-  function donutArcPath(cx, cy, rOuter, rInner, startAngle, endAngle) {
-    const largeArc = ((endAngle - startAngle + TAU) % TAU) > Math.PI ? 1 : 0;
-    const a0 = -Math.PI/2 + startAngle;
-    const a1 = -Math.PI/2 + endAngle;
-    const x0 = cx + rOuter * Math.cos(a0), y0 = cy + rOuter * Math.sin(a0);
-    const x1 = cx + rOuter * Math.cos(a1), y1 = cy + rOuter * Math.sin(a1);
-    const x2 = cx + rInner * Math.cos(a1), y2 = cy + rInner * Math.sin(a1);
-    const x3 = cx + rInner * Math.cos(a0), y3 = cy + rInner * Math.sin(a0);
-    return `M ${x0} ${y0} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x1} ${y1} L ${x2} ${y2} A ${rInner} ${rInner} 0 ${largeArc} 0 ${x3} ${y3} Z`;
-  }
+    function coverageMinutes(intervals){
+      const m = mergeIntervals(intervals);
+      return m.reduce((s,i)=>s+(i.end-i.start),0);
+    }
 
-  // half-hour ticks + hour ticks + numerals
-  function drawFace(svg, cx, cy, rOuter, rInner, faceMode) {
-    const ringWidth = rOuter - rInner;
+    function overlapMinutes(intervals){
+      const sum = intervals.reduce((s,i)=>s+(i.end-i.start),0);
+      return Math.max(0, sum - coverageMinutes(intervals));
+    }
 
-    // half-hour minor ticks (1 between each hour)
-    const minorLen = Math.max(4, (rOuter - rInner) * 0.28);
-    if (faceMode === "24") {
+    function computeGaps(merged){
+      const gaps = [];
+      if(!merged.length){ gaps.push({start:0, end:1440}); return gaps; }
+      if (merged[0].start > 0) {
+        gaps.push({start: 0, end: merged[0].start});
+      }
+      for (let i = 0; i < merged.length - 1; i++) {
+        if (merged[i].end < merged[i+1].start) {
+          gaps.push({start: merged[i].end, end: merged[i+1].start});
+        }
+      }
+      if (merged[merged.length - 1].end < 1440) {
+        gaps.push({start: merged[merged.length - 1].end, end: 1440});
+      }
+      return gaps;
+    }
+
+    // -----------------
+    // CLOCK DRAWING
+    // -----------------
+    function donutArcPath(cx, cy, rOuter, rInner, startAngle, endAngle) {
+      const largeArc = ((endAngle - startAngle + TAU) % TAU) > Math.PI ? 1 : 0;
+      const a0 = -Math.PI/2 + startAngle;
+      const a1 = -Math.PI/2 + endAngle;
+      const x0 = cx + rOuter * Math.cos(a0), y0 = cy + rOuter * Math.sin(a0);
+      const x1 = cx + rOuter * Math.cos(a1), y1 = cy + rOuter * Math.sin(a1);
+      const x2 = cx + rInner * Math.cos(a1), y2 = cy + rInner * Math.sin(a1);
+      const x3 = cx + rInner * Math.cos(a0), y3 = cy + rInner * Math.sin(a0);
+      return `M ${x0} ${y0} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x1} ${y1} L ${x2} ${y2} A ${rInner} ${rInner} 0 ${largeArc} 0 ${x3} ${y3} Z`;
+    }
+
+    // half-hour ticks + hour ticks + numerals
+    function drawFace(svg, cx, cy, rOuter, rInner, faceMode) {
+      const ringWidth = rOuter - rInner;
+
+      // half-hour minor ticks (1 between each hour)
+      const minorLen = Math.max(4, (rOuter - rInner) * 0.28);
+      if (faceMode === "24") {
+        for (let h = 0; h < 24; h++) {
+          const a = -Math.PI/2 + ((h + 0.5) / 24) * TAU;
+          const r1 = rOuter - minorLen;
+          const r2 = rOuter - 2;
+          const x1 = cx + r1*Math.cos(a), y1 = cy + r1*Math.sin(a);
+          const x2 = cx + r2*Math.cos(a), y2 = cy + r2*Math.sin(a);
+          const line = document.createElementNS(svg.namespaceURI, "line");
+          line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+          line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+          line.setAttribute("stroke", "var(--tick)");
+          line.setAttribute("stroke-width", 1);
+          line.setAttribute("stroke-linecap", "round");
+          line.setAttribute("opacity", "0.55");
+          svg.appendChild(line);
+        }
+      }
+
+      // hour ticks + numerals
+      const midR = (rInner + rOuter) / 2;
+      const longLen = Math.max(10, ringWidth * 0.60);
+      const medLen  = Math.max(8,  ringWidth * 0.45);
+
       for (let h = 0; h < 24; h++) {
-        const a = -Math.PI/2 + ((h + 0.5) / 24) * TAU;
-        const r1 = rOuter - minorLen;
-        const r2 = rOuter - 2;
+        const a = -Math.PI/2 + (h/24)*TAU;
+        const len = (h % 2 === 0) ? longLen : medLen;
+        const r1 = rOuter - len, r2 = rOuter - 2;
         const x1 = cx + r1*Math.cos(a), y1 = cy + r1*Math.sin(a);
         const x2 = cx + r2*Math.cos(a), y2 = cy + r2*Math.sin(a);
+
         const line = document.createElementNS(svg.namespaceURI, "line");
         line.setAttribute("x1", x1); line.setAttribute("y1", y1);
         line.setAttribute("x2", x2); line.setAttribute("y2", y2);
-        line.setAttribute("stroke", "var(--tick)");
-        line.setAttribute("stroke-width", 1);
+        line.setAttribute("stroke", "white");
+        line.setAttribute("stroke-width", 2);
         line.setAttribute("stroke-linecap", "round");
-        line.setAttribute("opacity", "0.55");
         svg.appendChild(line);
       }
+
+      for (let h = 0; h < 24; h += 2) {
+        const a = -Math.PI/2 + (h/24)*TAU;
+        const tx = cx + midR*Math.cos(a);
+        const ty = cy + midR*Math.sin(a);
+        const t = document.createElementNS(svg.namespaceURI, "text");
+        t.setAttribute("x", tx); t.setAttribute("y", ty);
+        t.setAttribute("fill", "white");
+        t.setAttribute("font-size", "11");
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("alignment-baseline", "middle");
+        t.setAttribute("style", "paint-order: stroke; stroke: rgba(0,0,0,.35); stroke-width: 3px;");
+        t.textContent = String(h);
+        svg.appendChild(t);
+      }
     }
 
-    // hour ticks + numerals
-    const midR = (rInner + rOuter) / 2;
-    const longLen = Math.max(10, ringWidth * 0.60);
-    const medLen  = Math.max(8,  ringWidth * 0.45);
+    function renderChart(){
+      const host = document.getElementById("chartHost");
+      host.innerHTML = "";
 
-    for (let h = 0; h < 24; h++) {
-      const a = -Math.PI/2 + (h/24)*TAU;
-      const len = (h % 2 === 0) ? longLen : medLen;
-      const r1 = rOuter - len, r2 = rOuter - 2;
-      const x1 = cx + r1*Math.cos(a), y1 = cy + r1*Math.sin(a);
-      const x2 = cx + r2*Math.cos(a), y2 = cy + r2*Math.sin(a);
+      const W = host.clientWidth || 380, H = host.clientHeight || 380;
+      const cx = W/2, cy = H/2, rOuter = Math.min(W,H)*0.44, rInner = rOuter*0.62;
 
-      const line = document.createElementNS(svg.namespaceURI, "line");
-      line.setAttribute("x1", x1); line.setAttribute("y1", y1);
-      line.setAttribute("x2", x2); line.setAttribute("y2", y2);
-      line.setAttribute("stroke", "white");
-      line.setAttribute("stroke-width", 2);
-      line.setAttribute("stroke-linecap", "round");
-      svg.appendChild(line);
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("width", W); svg.setAttribute("height", H);
+
+      // background ring
+      const bgRing = document.createElementNS(svg.namespaceURI, "circle");
+      bgRing.setAttribute("cx", cx); bgRing.setAttribute("cy", cy);
+      bgRing.setAttribute("r", rOuter);
+      bgRing.setAttribute("fill", "none");
+      bgRing.setAttribute("stroke", "var(--ring)");
+      bgRing.setAttribute("stroke-width", (rOuter - rInner));
+      svg.appendChild(bgRing);
+
+      // build arcs from blocks for the selected day
+      const dayKey = currentDateKey();
+      const blockIntervals = makeDailyIntervalsFor(dayKey);
+      const merged = mergeIntervals(blockIntervals);
+      const gaps = computeGaps(merged);
+
+      // gaps first
+      gaps.forEach(g=>{
+        const a0 = (g.start/1440) * TAU;
+        const a1 = (g.end/1440) * TAU;
+        const path = document.createElementNS(svg.namespaceURI, "path");
+        path.setAttribute("d", donutArcPath(cx, cy, rOuter, rInner, a0, a1));
+        path.setAttribute("fill", "var(--gap)");
+        path.setAttribute("opacity", "0.85");
+        svg.appendChild(path);
+      });
+
+      // blocks (normal + carry-over). Carry-over = more transparent.
+      blockIntervals.forEach(it=>{
+        const a0 = (it.start/1440) * TAU;
+        const a1 = (it.end/1440) * TAU;
+        const path = document.createElementNS(svg.namespaceURI, "path");
+        path.setAttribute("d", donutArcPath(cx, cy, rOuter, rInner, a0, a1));
+        path.setAttribute("fill", it.color);
+        if (it.isCarry) {
+          path.setAttribute("opacity", "0.4");
+        } else {
+          path.setAttribute("opacity", "0.98");
+        }
+        svg.appendChild(path);
+      });
+
+      // ticks & numerals
+      drawFace(svg, cx, cy, rOuter, rInner, "24");
+
+      // clock hand
+      const handGroup = document.createElementNS(svg.namespaceURI, "g");
+      handGroup.setAttribute("id", "handGroup");
+      handGroup.style.transformOrigin = `${cx}px ${cy}px`;
+      handGroup.style.transition = "transform 0.15s linear";
+
+      const hand = document.createElementNS(svg.namespaceURI, "line");
+      hand.setAttribute("x1", cx); hand.setAttribute("y1", cy);
+      hand.setAttribute("x2", cx); hand.setAttribute("y2", cy - (rOuter - 4));
+      hand.setAttribute("stroke", "#ffffff");
+      hand.setAttribute("stroke-width", "2");
+      hand.setAttribute("stroke-linecap", "round");
+      handGroup.appendChild(hand);
+
+      const tail = document.createElementNS(svg.namespaceURI, "line");
+      tail.setAttribute("x1", cx); tail.setAttribute("y1", cy);
+      tail.setAttribute("x2", cx); tail.setAttribute("y2", cy + Math.max(8, (rOuter - rInner)*0.25));
+      tail.setAttribute("stroke", "rgba(255,255,255,.7)");
+      tail.setAttribute("stroke-width", "2");
+      tail.setAttribute("stroke-linecap", "round");
+      handGroup.appendChild(tail);
+
+      const hub = document.createElementNS(svg.namespaceURI, "circle");
+      hub.setAttribute("cx", cx); hub.setAttribute("cy", cy); hub.setAttribute("r", 4.5);
+      hub.setAttribute("fill", "#ffffff");
+      hub.setAttribute("stroke", "rgba(0,0,0,.45)");
+      hub.setAttribute("stroke-width", "2");
+      handGroup.appendChild(hub);
+
+      svg.appendChild(handGroup);
+      host.appendChild(svg);
+
+      // status pill
+      const cov = coverageMinutes(blockIntervals);
+      const ov  = overlapMinutes(blockIntervals);
+      const free = Math.max(0, 1440 - cov);
+      const totals = document.getElementById("totals");
+      const pill = document.createElement("span");
+
+      let cls = "ok", msg = "All scheduled — 24h covered";
+      if (ov > 0) { cls = "err"; msg = `Overlap: ${minutesToHM(ov)}`; }
+      else if (free > 0) { cls = "warn"; msg = `Free/unallocated: ${minutesToHM(free)}`; }
+
+      pill.className = `pill ${cls}`;
+      pill.textContent = msg;
+      totals.innerHTML = "";
+      totals.appendChild(pill);
+
+      // spin the hand
+      startHandAnimation(handGroup);
     }
 
-    for (let h = 0; h < 24; h += 2) {
-      const a = -Math.PI/2 + (h/24)*TAU;
-      const tx = cx + midR*Math.cos(a);
-      const ty = cy + midR*Math.sin(a);
-      const t = document.createElementNS(svg.namespaceURI, "text");
-      t.setAttribute("x", tx); t.setAttribute("y", ty);
-      t.setAttribute("fill", "white");
-      t.setAttribute("font-size", "11");
-      t.setAttribute("text-anchor", "middle");
-      t.setAttribute("alignment-baseline", "middle");
-      t.setAttribute("style", "paint-order: stroke; stroke: rgba(0,0,0,.35); stroke-width: 3px;");
-      t.textContent = String(h);
-      svg.appendChild(t);
-    }
-  }
-
-  function renderChart(){
-    const host = document.getElementById("chartHost");
-    host.innerHTML = "";
-
-    const W = host.clientWidth, H = host.clientHeight;
-    const cx = W/2, cy = H/2, rOuter = Math.min(W,H)*0.44, rInner = rOuter*0.62;
-
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("width", W); svg.setAttribute("height", H);
-
-    // background ring
-    const bgRing = document.createElementNS(svg.namespaceURI, "circle");
-    bgRing.setAttribute("cx", cx); bgRing.setAttribute("cy", cy);
-    bgRing.setAttribute("r", rOuter);
-    bgRing.setAttribute("fill", "none");
-    bgRing.setAttribute("stroke", "var(--ring)");
-    bgRing.setAttribute("stroke-width", (rOuter - rInner));
-    svg.appendChild(bgRing);
-
-    // build arcs from blocks
-    const blockIntervals = makeIntervals(blocks);
-    const merged = mergeIntervals(blockIntervals);
-    const gaps = computeGaps(merged);
-
-    // gaps first
-    gaps.forEach(g=>{
-      const a0 = (g.start/1440) * TAU;
-      const a1 = (g.end/1440) * TAU;
-      const path = document.createElementNS(svg.namespaceURI, "path");
-      path.setAttribute("d", donutArcPath(cx, cy, rOuter, rInner, a0, a1));
-      path.setAttribute("fill", "var(--gap)");
-      path.setAttribute("opacity", "0.85");
-      svg.appendChild(path);
-    });
-
-    // blocks
-    blockIntervals.forEach(it=>{
-      const a0 = (it.start/1440) * TAU;
-      const a1 = (it.end/1440) * TAU;
-      const path = document.createElementNS(svg.namespaceURI, "path");
-      path.setAttribute("d", donutArcPath(cx, cy, rOuter, rInner, a0, a1));
-      path.setAttribute("fill", it.color);
-      path.setAttribute("opacity", "0.98");
-      svg.appendChild(path);
-    });
-
-    // ticks & numerals
-    drawFace(svg, cx, cy, rOuter, rInner, "24");
-
-    // clock hand
-    const handGroup = document.createElementNS(svg.namespaceURI, "g");
-    handGroup.setAttribute("id", "handGroup");
-    handGroup.style.transformOrigin = `${cx}px ${cy}px`;
-    handGroup.style.transition = "transform 0.15s linear";
-
-    const hand = document.createElementNS(svg.namespaceURI, "line");
-    hand.setAttribute("x1", cx); hand.setAttribute("y1", cy);
-    hand.setAttribute("x2", cx); hand.setAttribute("y2", cy - (rOuter - 4));
-    hand.setAttribute("stroke", "#ffffff");
-    hand.setAttribute("stroke-width", "2");
-    hand.setAttribute("stroke-linecap", "round");
-    handGroup.appendChild(hand);
-
-    const tail = document.createElementNS(svg.namespaceURI, "line");
-    tail.setAttribute("x1", cx); tail.setAttribute("y1", cy);
-    tail.setAttribute("x2", cx); tail.setAttribute("y2", cy + Math.max(8, (rOuter - rInner)*0.25));
-    tail.setAttribute("stroke", "rgba(255,255,255,.7)");
-    tail.setAttribute("stroke-width", "2");
-    tail.setAttribute("stroke-linecap", "round");
-    handGroup.appendChild(tail);
-
-    const hub = document.createElementNS(svg.namespaceURI, "circle");
-    hub.setAttribute("cx", cx); hub.setAttribute("cy", cy); hub.setAttribute("r", 4.5);
-    hub.setAttribute("fill", "#ffffff");
-    hub.setAttribute("stroke", "rgba(0,0,0,.45)");
-    hub.setAttribute("stroke-width", "2");
-    handGroup.appendChild(hub);
-
-    svg.appendChild(handGroup);
-    host.appendChild(svg);
-
-    // status pill
-    const cov = coverageMinutes(blockIntervals);
-    const ov  = overlapMinutes(blockIntervals);
-    const free = Math.max(0, 1440 - cov);
-    const totals = document.getElementById("totals");
-    const pill = document.createElement("span");
-
-    let cls = "ok", msg = "All scheduled — 24h covered";
-    if (ov > 0) { cls = "err"; msg = `Overlap: ${minutesToHM(ov)}`; }
-    else if (free > 0) { cls = "warn"; msg = `Free/unallocated: ${minutesToHM(free)}`; }
-
-    pill.className = `pill ${cls}`;
-    pill.textContent = msg;
-    totals.innerHTML = "";
-    totals.appendChild(pill);
-
-    // spin the hand
-    startHandAnimation(handGroup);
-  }
-
-  function render(){
-    save();          // persist changes (local + queue remote)
-    renderTable();   // update table
-    renderLegend();  // update legend
-    renderChart();   // redraw clock
-  }
-
-  // -----------------
-  // CLOCK HAND
-  // -----------------
-  let handTimer = null;
-
-  function formatTime(d){
-    const hh = d.getHours();
-    const mm = d.getMinutes().toString().padStart(2,'0');
-    const ss = d.getSeconds().toString().padStart(2,'0');
-    document.getElementById("timeLabel").textContent =
-      `${hh.toString().padStart(2,'0')}:${mm}:${ss}`;
-  }
-
-  function startHandAnimation(handGroup){
-    if (handTimer) {
-      clearInterval(handTimer);
-      handTimer = null;
+    function render(){
+      save();
+      updateDateLabel();
+      renderTable();
+      renderLegend();
+      renderChart();
     }
 
-    const update = () => {
-      const d = new Date();
-      formatTime(d);
-      const h = d.getHours() + d.getMinutes()/60 + d.getSeconds()/3600;
-      const angleDeg = (h / 24) * 360;
-      handGroup.style.transform = `rotate(${angleDeg}deg)`;
+    // -----------------
+    // CLOCK HAND
+    // -----------------
+    let handTimer = null;
+
+    function formatTime(d){
+      const hh = d.getHours();
+      const mm = d.getMinutes().toString().padStart(2,'0');
+      const ss = d.getSeconds().toString().padStart(2,'0');
+      document.getElementById("timeLabel").textContent =
+        `${hh.toString().padStart(2,'0')}:${mm}:${ss}`;
+    }
+
+    function startHandAnimation(handGroup){
+      if (handTimer) {
+        clearInterval(handTimer);
+        handTimer = null;
+      }
+
+      const update = () => {
+        const d = new Date();
+        formatTime(d);
+        const h = d.getHours() + d.getMinutes()/60 + d.getSeconds()/3600;
+        const angleDeg = (h / 24) * 360;
+        handGroup.style.transform = `rotate(${angleDeg}deg)`;
+      };
+
+      update();
+      handTimer = setInterval(update, 100);
+    }
+
+    // -----------------
+    // TABLE + LEGEND UI
+    // -----------------
+    function renderTable(){
+      const tbody = document.getElementById("tbody");
+      tbody.innerHTML = "";
+
+      const key = currentDateKey();
+      const blocks = getBlocksForKey(key);
+      const prevBlocks = getBlocksForKey(previousDateKey(key));
+
+      // Editable blocks that start on this day
+      blocks.forEach((b, i) => {
+        const tr = document.createElement("tr");
+
+        const tdLabel = document.createElement("td");
+        const inLabel = document.createElement("input");
+        inLabel.type = "text";
+        inLabel.value = b.label;
+        inLabel.oninput = () => { b.label = inLabel.value; };
+        inLabel.onblur  = () => { render(); };
+        tdLabel.appendChild(inLabel);
+
+        const tdStart = document.createElement("td");
+        const inStart = document.createElement("input");
+        inStart.type = "time";
+        inStart.value = b.start || "08:00";
+        inStart.step = 60;
+        inStart.onchange = () => { b.start = inStart.value; render(); };
+        tdStart.appendChild(inStart);
+
+        const tdEnd = document.createElement("td");
+        const inEnd = document.createElement("input");
+        inEnd.type = "time";
+        inEnd.value = b.end || "09:00";
+        inEnd.step = 60;
+        inEnd.onchange = () => { b.end = inEnd.value; render(); };
+        tdEnd.appendChild(inEnd);
+
+        const tdMin = document.createElement("td");
+        tdMin.className = "minutesCell";
+        tdMin.textContent = `${minutesToHM(calcMinutes(b))}`;
+
+        const tdColor = document.createElement("td");
+        const inColor = document.createElement("input");
+        inColor.type = "color";
+        inColor.value = b.color;
+        inColor.oninput = () => { b.color = inColor.value; render(); };
+        tdColor.appendChild(inColor);
+
+        const tdActions = document.createElement("td");
+        const del = document.createElement("button");
+        del.textContent = "✕";
+        del.style.background = "transparent";
+        del.style.border = "1px solid rgba(255,255,255,.25)";
+        del.style.color = "var(--text)";
+        del.style.padding = "6px 8px";
+        del.style.borderRadius = "8px";
+        del.onclick = () => {
+          blocks.splice(i,1);
+          render();
+        };
+        tdActions.appendChild(del);
+
+        tr.append(tdLabel, tdStart, tdEnd, tdMin, tdColor, tdActions);
+        tbody.appendChild(tr);
+      });
+
+      // Read-only carry-over blocks from previous day (wrap past midnight)
+      prevBlocks.forEach((b) => {
+        const s = parseHHMM(b.start);
+        const e = parseHHMM(b.end);
+        if (s === null || e === null) return;
+        const len = (e - s + 1440) % 1440;
+        if (len === 0) return;
+        if (s > e) {
+          const tr = document.createElement("tr");
+          tr.className = "readonly-row";
+
+          const tdLabel = document.createElement("td");
+          const labelSpan = document.createElement("div");
+          labelSpan.textContent = b.label;
+          const badge = document.createElement("div");
+          badge.className = "readonly-badge";
+          badge.textContent = "From previous day";
+          tdLabel.appendChild(labelSpan);
+          tdLabel.appendChild(badge);
+
+          const tdStart = document.createElement("td");
+          tdStart.textContent = "00:00";
+
+          const tdEnd = document.createElement("td");
+          tdEnd.textContent = fmtHHMM(e);
+
+          const tdMin = document.createElement("td");
+          tdMin.className = "minutesCell";
+          tdMin.textContent = minutesToHM(e); // 0 -> e minutes this morning
+
+          const tdColor = document.createElement("td");
+          const swatch = document.createElement("span");
+          swatch.className = "swatch";
+          swatch.style.display = "inline-block";
+          swatch.style.background = b.color;
+          tdColor.appendChild(swatch);
+
+          const tdActions = document.createElement("td");
+          tdActions.style.fontSize = "11px";
+          tdActions.style.color = "var(--muted)";
+          tdActions.textContent = "Edit on previous day";
+
+          tr.append(tdLabel, tdStart, tdEnd, tdMin, tdColor, tdActions);
+          tbody.appendChild(tr);
+        }
+      });
+    }
+
+    function renderLegend(){
+      const leg = document.getElementById("legend");
+      leg.innerHTML = "";
+
+      const key = currentDateKey();
+      const blocks = getBlocksForKey(key);
+      const prevBlocks = getBlocksForKey(previousDateKey(key));
+
+      // Normal blocks for this day
+      blocks.forEach((b) => {
+        const mins = calcMinutes(b);
+        const row = document.createElement("div");
+        row.className = "item";
+        row.innerHTML = `
+          <span class="swatch" style="background:${b.color}"></span>
+          <span>${b.label} <span style="color:#fff">${b.start}</span>–<span style="color:#fff">${b.end}</span></span>
+          <span style="margin-left:auto;color:#fff">${minutesToHM(mins)}</span>`;
+        leg.appendChild(row);
+      });
+
+      // Carry-over segments (from previous day, greyish)
+      prevBlocks.forEach((b) => {
+        const s = parseHHMM(b.start);
+        const e = parseHHMM(b.end);
+        if (s === null || e === null) return;
+        const len = (e - s + 1440) % 1440;
+        if (len === 0) return;
+        if (s > e) {
+          const row = document.createElement("div");
+          row.className = "item";
+          row.style.opacity = "0.65";
+          row.innerHTML = `
+            <span class="swatch" style="background:${b.color}"></span>
+            <span>${b.label} <span style="color:#fff">00:00</span>–<span style="color:#fff">${fmtHHMM(e)}</span><br>
+              <span style="font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted);">From previous day</span>
+            </span>
+            <span style="margin-left:auto;color:#fff">${minutesToHM(e)}</span>`;
+          leg.appendChild(row);
+        }
+      });
+    }
+
+    // -----------------
+    // BUTTON HANDLERS
+    // -----------------
+    async function signOut() {
+      const btn = document.getElementById('signOutBtn');
+      try {
+        if (btn) { btn.disabled = true; btn.textContent = 'Signing out…'; }
+
+        // OPTIONAL CLEANUP: wipe this user's local cache so next person on this device
+        // doesn't auto-fill from an old user.
+        if (CURRENT_UID) {
+          localStorage.removeItem(storeKeyFor(CURRENT_UID));
+        }
+
+        await supabase.auth.signOut();
+        location.href = LOGIN_URL;
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Sign out'; }
+        alert('Could not sign out: ' + (e?.message || e));
+      }
+    }
+
+    document.getElementById("addRowBtn").onclick = () => {
+      const now = new Date();
+      const startMin = now.getHours()*60 + now.getMinutes();
+      const endMin = (startMin + 60) % 1440;
+      const blocks = getCurrentBlocks();
+      const nextColor = palette[blocks.length % palette.length];
+      blocks.push({
+        label:"New Block",
+        start: fmtHHMM(startMin),
+        end:   fmtHHMM(endMin),
+        color: nextColor
+      });
+      render();
     };
 
-    update();
-    handTimer = setInterval(update, 100);
-  }
+    document.getElementById("signOutBtn").onclick = signOut;
 
-  // -----------------
-  // TABLE + LEGEND UI
-  // -----------------
-  function renderTable(){
-    const tbody = document.getElementById("tbody");
-    tbody.innerHTML = "";
-    blocks.forEach((b, i) => {
-      const tr = document.createElement("tr");
+    // Date navigation buttons
+    document.getElementById("prevDayBtn").onclick = () => {
+      selectedDate.setDate(selectedDate.getDate() - 1);
+      render();
+    };
+    document.getElementById("nextDayBtn").onclick = () => {
+      selectedDate.setDate(selectedDate.getDate() + 1);
+      render();
+    };
+    document.getElementById("todayBtn").onclick = () => {
+      selectedDate = new Date();
+      render();
+    };
 
-      const tdLabel = document.createElement("td");
-      const inLabel = document.createElement("input");
-      inLabel.type = "text";
-      inLabel.value = b.label;
-      inLabel.oninput = () => { b.label = inLabel.value; };
-      inLabel.onblur  = () => { render(); };
-      tdLabel.appendChild(inLabel);
+    const datePicker = document.getElementById("datePicker");
+    const calendarBtn = document.getElementById("calendarBtn");
+    if (calendarBtn && datePicker) {
+      calendarBtn.onclick = () => {
+        // Try the fancy picker if supported, fall back to focusing the input
+        if (typeof datePicker.showPicker === "function") {
+          datePicker.showPicker();
+        } else {
+          datePicker.focus();
+          datePicker.click();
+        }
+      };
+      datePicker.onchange = () => {
+        if (!datePicker.value) return;
+        selectedDate = keyToDate(datePicker.value);
+        render();
+      };
+    }
 
-      const tdStart = document.createElement("td");
-      const inStart = document.createElement("input");
-      inStart.type = "time";
-      inStart.value = b.start || "08:00";
-      inStart.step = 60;
-      inStart.onchange = () => { b.start = inStart.value; render(); };
-      tdStart.appendChild(inStart);
+    // -----------------
+    // INIT FLOW
+    // -----------------
+    (async function init(){
+      document.getElementById("footerNote").textContent =
+        "Tip: If a block goes past midnight (fx 22:00 → 07:00), the morning part will show as a grey block on the next day. To change it, go back to the day where it starts.";
 
-      const tdEnd = document.createElement("td");
-      const inEnd = document.createElement("input");
-      inEnd.type = "time";
-      inEnd.value = b.end || "09:00";
-      inEnd.step = 60;
-      inEnd.onchange = () => { b.end = inEnd.value; render(); };
-      tdEnd.appendChild(inEnd);
+      // 1. must be logged in
+      if (!(await requireAuth())) return;
 
-      const tdMin = document.createElement("td");
-      tdMin.className = "minutesCell";
-      tdMin.textContent = `${minutesToHM(calcMinutes(b))}`;
-
-      const tdColor = document.createElement("td");
-      const inColor = document.createElement("input");
-      inColor.type = "color";
-      inColor.value = b.color;
-      inColor.oninput = () => { b.color = inColor.value; render(); };
-      tdColor.appendChild(inColor);
-
-      const tdActions = document.createElement("td");
-      const del = document.createElement("button");
-      del.textContent = "✕";
-      del.style.background = "transparent";
-      del.style.border = "1px solid rgba(255,255,255,.25)";
-      del.style.color = "var(--text)";
-      del.style.padding = "6px 8px";
-      del.style.borderRadius = "8px";
-      del.onclick = () => { blocks.splice(i,1); render(); };
-      tdActions.appendChild(del);
-
-      tr.append(tdLabel, tdStart, tdEnd, tdMin, tdColor, tdActions);
-      tbody.appendChild(tr);
-    });
-  }
-
-  function renderLegend(){
-    const leg = document.getElementById("legend");
-    leg.innerHTML = "";
-    blocks.forEach((b) => {
-      const mins = calcMinutes(b);
-      const row = document.createElement("div");
-      row.className = "item";
-      row.innerHTML = `
-        <span class="swatch" style="background:${b.color}"></span>
-        <span>${b.label} <span style="color:#fff">${b.start}</span>–<span style="color:#fff">${b.end}</span></span>
-        <span style="margin-left:auto;color:#fff">${minutesToHM(mins)}</span>`;
-      leg.appendChild(row);
-    });
-  }
-
-  // -----------------
-  // BUTTON HANDLERS
-  // -----------------
-  async function signOut() {
-    const btn = document.getElementById('signOutBtn');
-    try {
-      if (btn) { btn.disabled = true; btn.textContent = 'Signing out…'; }
-
-      // OPTIONAL CLEANUP: wipe this user's local cache so next person on this device
-      // doesn't auto-fill from an old user.
-      if (CURRENT_UID) {
-        localStorage.removeItem(storeKeyFor(CURRENT_UID));
+      // 2. figure out which user this is
+      CURRENT_UID = await getUserId();
+      if (!CURRENT_UID) {
+        // weird edge case: session but no user (shouldn't happen)
+        location.href = LOGIN_URL;
+        return;
       }
 
-      await supabase.auth.signOut();
-      location.href = LOGIN_URL;
-    } catch (e) {
-      if (btn) { btn.disabled = false; btn.textContent = 'Sign out'; }
-      alert('Could not sign out: ' + (e?.message || e));
-    }
-  }
+      // 3. try to load from Supabase first
+      const gotCloud = await loadRemote();
 
-  document.getElementById("addRowBtn").onclick = () => {
-    const now = new Date();
-    const startMin = now.getHours()*60 + now.getMinutes();
-    const endMin = (startMin + 60) % 1440;
-    const nextColor = palette[blocks.length % palette.length];
-    blocks.push({
-      label:"New Block",
-      start: fmtHHMM(startMin),
-      end:   fmtHHMM(endMin),
-      color: nextColor
-    });
-    render();
-  };
+      if (!gotCloud) {
+        // 4. no cloud row yet, try local for THIS user
+        const cached = loadLocal(CURRENT_UID);
 
-  document.getElementById("signOutBtn").onclick = signOut;
-
-  // -----------------
-  // INIT FLOW
-  // -----------------
-  (async function init(){
-    // 1. must be logged in
-    if (!(await requireAuth())) return;
-
-    // 2. figure out which user this is
-    CURRENT_UID = await getUserId();
-    if (!CURRENT_UID) {
-      // weird edge case: session but no user (shouldn't happen)
-      location.href = LOGIN_URL;
-      return;
-    }
-
-    // 3. try to load from Supabase first
-    const gotCloud = await loadRemote();
-
-    if (!gotCloud) {
-      // 4. no cloud row yet, try local for THIS user
-      const cached = loadLocal(CURRENT_UID);
-
-      if (Array.isArray(cached) && cached.length) {
-        // we have local data for this user already on this device
-        blocks = cached;
+        if (cached && typeof cached === "object") {
+          if (Array.isArray(cached)) {
+            const todayKey = dateToKey(new Date());
+            dayMap = {};
+            dayMap[todayKey] = cached;
+          } else {
+            dayMap = cached;
+          }
+        } else {
+          // 5. true first-time user:
+          const todayKey = dateToKey(new Date());
+          dayMap = {};
+          dayMap[todayKey] = DEFAULT_BLOCKS.slice();
+          saveLocal(CURRENT_UID, dayMap);
+          // push it to Supabase so it's available on other devices
+          remoteSave();
+        }
       } else {
-        // 5. true first-time user:
-        //    use DEFAULT_BLOCKS and immediately persist it
-        blocks = DEFAULT_BLOCKS.slice();
-        saveLocal(CURRENT_UID, blocks);
-        // push it to Supabase so it's available on other devices
-        remoteSave();
+        // we got data from cloud, also sync it into local so this device is up to date
+        saveLocal(CURRENT_UID, dayMap);
       }
-    } else {
-      // we got data from cloud, also sync it into local so this device is up to date
-      saveLocal(CURRENT_UID, blocks);
-    }
 
-    // 6. finally draw UI
-    render();
-  })();
+      // start on today
+      selectedDate = new Date();
+      updateDateLabel();
 
-</script>
+      // 6. finally draw UI
+      render();
+    })();
+
+  </script>
 </body>
 </html>
