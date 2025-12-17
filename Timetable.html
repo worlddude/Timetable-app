@@ -356,7 +356,7 @@
       const uid = CURRENT_UID;
       if (!uid) return;
 
-      await supabase
+      await sb
         .from("timetable_blocks")
         .upsert({
           user_id: uid,
