@@ -900,24 +900,9 @@
     // -----------------
     // BUTTON HANDLERS
     // -----------------
-    async function signOut() {
-      const btn = document.getElementById('signOutBtn');
-      try {
-        if (btn) { btn.disabled = true; btn.textContent = 'Signing out…'; }
-
-        // OPTIONAL CLEANUP: wipe this user's local cache so next person on this device
-        // doesn't auto-fill from an old user.
-        if (CURRENT_UID) {
-          localStorage.removeItem(storeKeyFor(CURRENT_UID));
-        }
-
-        await sb.auth.signOut();
-        location.href = LOGIN_URL;
-      } catch (e) {
-        if (btn) { btn.disabled = false; btn.textContent = 'Sign out'; }
-        alert('Could not sign out: ' + (e?.message || e));
-      }
-    }
+    document.getElementById("profileBtn").onclick = () => {
+      location.href = "/profile.html"; // or whatever path you choose
+    };
 
     document.getElementById("addRowBtn").onclick = () => {
       const now = new Date();
