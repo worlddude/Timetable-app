@@ -117,6 +117,15 @@
   const goalsToggle = document.getElementById("goalsToggle");
   const colorToggle = document.getElementById("colorblindToggle");
 
+  const { error } = await sb
+    .from("user_settings")
+    .update({ block_notes: notesToggle.checked })
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Settings update failed:", error);
+  }
+  
   // Go back
   document.getElementById("backBtn").onclick = () =>
     location.href = "Timetable.html";
