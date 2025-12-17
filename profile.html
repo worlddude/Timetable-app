@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="da-DK">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Profile Settings</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background:#0f1221; color:#e8ebff; padding:20px; }
+    .card { background:#14182b; border-radius:20px; padding:20px; max-width:400px; margin:auto; }
+    button { padding:10px 16px; border-radius:10px; border:none; cursor:pointer; margin-top:10px; font-weight:600; }
+    .danger { background:#ef4444; color:#fff; }
+    .primary { background:#7c82ff; color:#fff; }
+    input { width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,.2); margin-top:5px; background: rgba(255,255,255,.06); color:#fff; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Profile</h1>
+    <div>
+      <label for="emailInput">Email:</label>
+      <input type="email" id="emailInput" placeholder="Your email">
+      <button id="changeEmailBtn" class="primary">Change Email</button>
+    </div>
+
+    <div>
+      <button id="signOutBtn" class="primary">Sign Out</button>
+      <button id="deleteAccountBtn" class="danger">Delete Me</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = "https://uvidyiedolvtsissfkel.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2aWR5aWVkb2x2dHNpc3Nma2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2OTIxMDgsImV4cCI6MjA3ODI2ODEwOH0.WF0WXdilYUooWm_VdUsrvXHdWPU26kvv9urYKOHHooQ";
+    const LOGIN_URL = "/Login"; // redirect after logout or delete
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function requireAuth() {
+      const { data } = await sb.auth.getSession();
+      if (!data?.session) location.href = LOGIN_URL;
+      return data.session.user;
+    }
+
+    (async function init() {
+      const user = await requireAuth();
+      if (!user) return;
+
+      // Prefill email
+      document.getElementById("emailInput").value = user.email;
+
+      // Sign out
+      document.getElementById("signOutBtn").onclick = async () => {
+        await sb.auth.signOut();
+        location.href = LOGIN_URL;
+      };
+
+      // Change email
+      document.getElementById("changeEmailBtn").onclick = async () => {
+        const newEmail = document.getElementById("emailInput").value;
+        if (!newEmail) return alert("Enter a valid email");
+        const { error } = await sb.auth.updateUser({ email: newEmail });
+        if (error) return alert("Error: " + error.message);
+        alert("Email updated. You may need to check your inbox for confirmation.");
+      };
+
+      // Delete account
+      document.getElementById("deleteAccountBtn").onclick = async () => {
+        if (!confirm("Are you sure you want to delete your account? This cannot be undone.")) return;
+        const { error } = await sb.auth.admin.deleteUser(user.id); // NOTE: requires service_role key
+        if (error) return alert("Error deleting account: " + error.message);
+        alert("Account deleted.");
+        location.href = LOGIN_URL;
+      };
+    })();
+  </script>
+</body>
+</html>
