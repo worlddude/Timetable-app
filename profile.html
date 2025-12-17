@@ -1,91 +1,161 @@
 <!DOCTYPE html>
 <html lang="da-DK">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Profile Settings</title>
-  <style>
-    body { font-family: system-ui, sans-serif; background:#0f1221; color:#e8ebff; padding:20px; }
-    .card { background:#14182b; border-radius:20px; padding:20px; max-width:400px; margin:auto; }
-    button { padding:10px 16px; border-radius:10px; border:none; cursor:pointer; margin-top:10px; font-weight:600; }
-    .danger { background:#ef4444; color:#fff; }
-    .primary { background:#7c82ff; color:#fff; }
-    input { width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,.2); margin-top:5px; background: rgba(255,255,255,.06); color:#fff; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Circular Timetable — Profile</title>
+<style>
+  :root {
+    --bg: #0f1221;
+    --card: #14182b;
+    --text: #e8ebff;
+    --muted: #b9c0ff;
+    --accent: #7c82ff;
+    --danger: #ef4444;
+  }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; padding:0;}
+  .container { max-width: 600px; margin: 24px auto; padding: 16px; display: flex; flex-direction: column; gap: 24px; }
+  h2 { font-size: 18px; margin-bottom: 12px; }
+  .section { background: var(--card); border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+  .item:last-child { border-bottom: none; }
+  button { background: var(--accent); color: #fff; border:none; padding: 8px 12px; border-radius: 12px; cursor:pointer; }
+  button.danger { background: var(--danger); }
+  input[type="email"], input[type="password"], textarea { width: 60%; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.06); color: var(--text);}
+  textarea { resize: vertical; width: 100%; }
+  .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,.2); border-radius: 24px; transition: 0.3s; }
+  .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 2px; bottom: 2px; background-color: #fff; border-radius: 50%; transition: 0.3s; }
+  input:checked + .slider { background: var(--accent); }
+  input:checked + .slider:before { transform: translateX(26px); }
+  .go-back { margin-bottom: 16px; background: rgba(255,255,255,.1); color: var(--text); }
+</style>
 </head>
 <body>
-  <div class="card">
-    <h1>Profile</h1>
-    <div>
-      <label for="emailInput">Email:</label>
-      <input type="email" id="emailInput" placeholder="Your email">
-      <button id="changeEmailBtn" class="primary">Change Email</button>
+  <div class="container">
+    <button class="go-back" id="backBtn">← Back to Timetable</button>
+
+    <!-- App Settings -->
+    <div class="section">
+      <h2>App Settings</h2>
+      <div class="item">
+        <span>Goals</span>
+        <label class="switch">
+          <input type="checkbox" id="goalsToggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="item">
+        <span>Colorblind Mode</span>
+        <label class="switch">
+          <input type="checkbox" id="colorblindToggle">
+          <span class="slider"></span>
+        </label>
+      </div>
     </div>
 
-    <div>
-      <button id="signOutBtn" class="primary">Sign Out</button>
-      <button id="deleteAccountBtn" class="danger">Delete Me</button>
+    <!-- Profile Settings -->
+    <div class="section">
+      <h2>Profile Settings</h2>
+      <div class="item">
+        <span>Sign Out</span>
+        <button id="signOutBtn">Sign Out</button>
+      </div>
+      <div class="item">
+        <span>Change Email</span>
+        <input type="email" id="emailInput" placeholder="new@example.com">
+        <button id="changeEmailBtn">Update</button>
+      </div>
+      <div class="item">
+        <span>Change Password</span>
+        <input type="password" id="passwordInput" placeholder="New Password">
+        <button id="changePasswordBtn">Update</button>
+      </div>
+      <div class="item">
+        <span>Delete Account</span>
+        <button class="danger" id="deleteBtn">Delete Me</button>
+      </div>
     </div>
-    <div>
-      <button id="backBtn" style="padding:10px 16px; border-radius:10px; border:none; background:var(--accent); color:#fff; cursor:pointer;">
-        ← Back to Timetable
+
+    <!-- App Developer -->
+    <div class="section">
+      <h2>App Developer</h2>
+      <div class="item">
+        <span>Feedback</span>
+      </div>
+      <textarea id="feedbackText" placeholder="Write your feedback here..."></textarea>
+      <button id="submitFeedbackBtn">Submit Feedback</button>
+      <div class="item">
+        <span>Credits</span>
+        <span>© 2025 Your Name</span>
+      </div>
     </div>
   </div>
-</button>
 
-  </div>
-  
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // Replace with your Supabase config
+  const SUPABASE_URL = "https://uvidyiedolvtsissfkel.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2aWR5aWVkb2x2dHNpc3Nma2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2OTIxMDgsImV4cCI6MjA3ODI2ODEwOH0.WF0WXdilYUooWm_VdUsrvXHdWPU26kvv9urYKOHHooQ";
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const LOGIN_URL = "https://worlddude.github.io/Timetable-app/Login";
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script>
-    const SUPABASE_URL = "https://uvidyiedolvtsissfkel.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2aWR5aWVkb2x2dHNpc3Nma2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2OTIxMDgsImV4cCI6MjA3ODI2ODEwOH0.WF0WXdilYUooWm_VdUsrvXHdWPU26kvv9urYKOHHooQ";
-    const LOGIN_URL = "/Timetable-app/profile"; // redirect after logout or delete
+  // Go back to main page
+  document.getElementById("backBtn").onclick = () => location.href = "index.html";
 
-    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  // Sign Out
+  document.getElementById("signOutBtn").onclick = async () => {
+    await sb.auth.signOut();
+    location.href = LOGIN_URL;
+  };
 
-    async function requireAuth() {
-      const { data } = await sb.auth.getSession();
-      if (!data?.session) location.href = LOGIN_URL;
-      return data.session.user;
-    }
+  // Update Email
+  document.getElementById("changeEmailBtn").onclick = async () => {
+    const email = document.getElementById("emailInput").value;
+    if (!email) return alert("Enter a new email");
+    const { error } = await sb.auth.updateUser({ email });
+    if (error) alert("Error: " + error.message);
+    else alert("Email updated!");
+  };
 
-    (async function init() {
-      const user = await requireAuth();
-      if (!user) return;
+  // Update Password
+  document.getElementById("changePasswordBtn").onclick = async () => {
+    const password = document.getElementById("passwordInput").value;
+    if (!password) return alert("Enter a new password");
+    const { error } = await sb.auth.updateUser({ password });
+    if (error) alert("Error: " + error.message);
+    else alert("Password updated!");
+  };
 
-      // Prefill email
-      document.getElementById("emailInput").value = user.email;
+  // Delete Account
+  document.getElementById("deleteBtn").onclick = async () => {
+    if (!confirm("Are you sure you want to delete your account? This cannot be undone.")) return;
+    const user = await sb.auth.getUser();
+    const { error } = await sb.auth.admin.deleteUser(user.data.user.id);
+    if (error) alert("Error: " + error.message);
+    else location.href = LOGIN_URL;
+  };
 
-      // Sign out
-      document.getElementById("signOutBtn").onclick = async () => {
-        await sb.auth.signOut();
-        location.href = LOGIN_URL;
-      };
+  // Toggle Goals (just local storage for now)
+  const goalsToggle = document.getElementById("goalsToggle");
+  goalsToggle.checked = localStorage.getItem("goalsEnabled") === "true";
+  goalsToggle.onchange = () => localStorage.setItem("goalsEnabled", goalsToggle.checked);
 
-      document.getElementById("backBtn").onclick = () => {
-        // Go back to the main page
-        location.href = "Timetable.html"; // replace with your main page filename
-      };
+  // Toggle Colorblind (just local storage)
+  const colorToggle = document.getElementById("colorblindToggle");
+  colorToggle.checked = localStorage.getItem("colorblindMode") === "true";
+  colorToggle.onchange = () => localStorage.setItem("colorblindMode", colorToggle.checked);
 
-      // Change email
-      document.getElementById("changeEmailBtn").onclick = async () => {
-        const newEmail = document.getElementById("emailInput").value;
-        if (!newEmail) return alert("Enter a valid email");
-        const { error } = await sb.auth.updateUser({ email: newEmail });
-        if (error) return alert("Error: " + error.message);
-        alert("Email updated. You may need to check your inbox for confirmation.");
-      };
-
-      // Delete account
-      document.getElementById("deleteAccountBtn").onclick = async () => {
-        if (!confirm("Are you sure you want to delete your account? This cannot be undone.")) return;
-        const { error } = await sb.auth.admin.deleteUser(user.id); // NOTE: requires service_role key
-        if (error) return alert("Error deleting account: " + error.message);
-        alert("Account deleted.");
-        location.href = LOGIN_URL;
-      };
-    })();
-  </script>
+  // Feedback submit (for now just logs)
+  document.getElementById("submitFeedbackBtn").onclick = async () => {
+    const feedback = document.getElementById("feedbackText").value.trim();
+    if (!feedback) return alert("Please write some feedback first");
+    // Example: save feedback in a Supabase table called "feedback"
+    const { error } = await sb.from("feedback").insert([{ user_id: (await sb.auth.getUser()).data.user.id, feedback }]);
+    if (error) alert("Error submitting feedback: " + error.message);
+    else { alert("Feedback submitted!"); document.getElementById("feedbackText").value = ""; }
+  };
+</script>
 </body>
 </html>
