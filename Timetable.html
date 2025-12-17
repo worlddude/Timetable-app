@@ -208,17 +208,17 @@
     // -----------------
 
     async function requireAuth() {
-      const sb = window.sb.createClient(
-        SUPABASE_URL,
-        SUPABASE_ANON_KEY
-      );
-      if (!session) {
+      const { data, error } = await sb.auth.getSession();
+
+      if (error || !data?.session) {
+        await sb.auth.signOut(); // clean broken state
         location.href = LOGIN_URL;
         return false;
       }
-      return true;
-    }
 
+    return true;
+  }
+    
     async function getUserId() {
       const { data: { user } } = await sb.auth.getUser();
       return user?.id || null;
