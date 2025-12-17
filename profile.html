@@ -106,7 +106,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  async function initProfile() {
+async function initProfile() {
   // Supabase config
   const SUPABASE_URL = "https://uvidyiedolvtsissfkel.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2aWR5aWVkb2x2dHNpc3Nma2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2OTIxMDgsImV4cCI6MjA3ODI2ODEwOH0.WF0WXdilYUooWm_VdUsrvXHdWPU26kvv9urYKOHHooQ";
@@ -118,18 +118,8 @@
   const goalsToggle = document.getElementById("goalsToggle");
   const colorToggle = document.getElementById("colorblindToggle");
 
-  const { error } = await sb
-    .from("user_settings")
-    .update({ block_notes: notesToggle.checked })
-    .eq("user_id", userId);
-
-  if (error) {
-    console.error("Settings update failed:", error);
-  }
-  
   // Go back
-  document.getElementById("backBtn").onclick = () =>
-    location.href = "Timetable.html";
+  document.getElementById("backBtn").onclick = () => location.href = "Timetable.html";
 
   // Sign out
   document.getElementById("signOutBtn").onclick = async () => {
@@ -155,84 +145,62 @@
     else alert("Password updated!");
   };
 
-  // Delete account (⚠️ needs backend later)
+  // Delete account
   document.getElementById("deleteBtn").onclick = async () => {
     alert("Account deletion needs a secure backend. Not enabled yet.");
   };
 
-  // -----------------------------
-  // USER SETTINGS (SYNCED)
-  // -----------------------------
+  // Get current user
+  const { data: userData, error: userError } = await sb.auth.getUser();
+  if (userError || !userData?.user) {
+    location.href = LOGIN_URL;
+    return;
+  }
+  const userId = userData.user.id;
 
-  async function initSettings() {
-    const { data: userData } = await sb.auth.getUser();
-    if (!userData?.user) {
-      location.href = LOGIN_URL;
-      return;
-    }
+  // Ensure user_settings row exists
+  let { data: settings, error: settingsError } = await sb
+    .from("user_settings")
+    .select("*")
+    .eq("user_id", userId)
+    .single();
 
-    const userId = userData.user.id;
-
-    // Ensure settings exist
-    const { data: existing } = await sb
+  if (!settings) {
+    const { data: newSettings, error: insertError } = await sb
       .from("user_settings")
-      .select("*")
-      .eq("user_id", userId)
+      .insert({ user_id: userId, block_notes: true, goals_enabled: false, colorblind_mode: false })
+      .select()
       .single();
 
-    if (!existing) {
-      await sb.from("user_settings").insert({
-        user_id: userId,
-        block_notes: true,
-        goals_enabled: false,
-        colorblind_mode: false
-      });
+    if (insertError) {
+      console.error("Failed to insert default settings:", insertError);
+    } else {
+      settings = newSettings;
     }
-
-    // Load settings
-    const { data: settings } = await sb
-      .from("user_settings")
-      .select("*")
-      .eq("user_id", userId)
-      .single();
-
-    notesToggle.checked = settings.block_notes;
-    goalsToggle.checked = settings.goals_enabled;
-    colorToggle.checked = settings.colorblind_mode;
-
-    // Save changes
-    notesToggle.onchange = () =>
-      sb.from("user_settings")
-        .update({ block_notes: notesToggle.checked })
-        .eq("user_id", userId);
-
-    goalsToggle.onchange = () =>
-      sb.from("user_settings")
-        .update({ goals_enabled: goalsToggle.checked })
-        .eq("user_id", userId);
-
-    colorToggle.onchange = () =>
-      sb.from("user_settings")
-        .update({ colorblind_mode: colorToggle.checked })
-        .eq("user_id", userId);
   }
 
-  initSettings();
+  // Load settings into toggles
+  notesToggle.checked = settings.block_notes;
+  goalsToggle.checked = settings.goals_enabled;
+  colorToggle.checked = settings.colorblind_mode;
 
-  // -----------------------------
-  // FEEDBACK
-  // -----------------------------
+  // Save changes when toggles change
+  notesToggle.onchange = async () => {
+    await sb.from("user_settings").update({ block_notes: notesToggle.checked }).eq("user_id", userId);
+  };
+  goalsToggle.onchange = async () => {
+    await sb.from("user_settings").update({ goals_enabled: goalsToggle.checked }).eq("user_id", userId);
+  };
+  colorToggle.onchange = async () => {
+    await sb.from("user_settings").update({ colorblind_mode: colorToggle.checked }).eq("user_id", userId);
+  };
+
+  // Feedback submit
   document.getElementById("submitFeedbackBtn").onclick = async () => {
     const feedback = document.getElementById("feedbackText").value.trim();
     if (!feedback) return alert("Write feedback first");
 
-    const { data: userData } = await sb.auth.getUser();
-
-    const { error } = await sb.from("feedback").insert({
-      user_id: userData.user.id,
-      feedback
-    });
-
+    const { error } = await sb.from("feedback").insert({ user_id: userId, feedback });
     if (error) alert(error.message);
     else {
       alert("Feedback submitted!");
@@ -240,6 +208,6 @@
     }
   };
 }
-initProfile();
 
+initProfile();
 </script>
