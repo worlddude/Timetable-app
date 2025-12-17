@@ -26,7 +26,15 @@
       <button id="signOutBtn" class="primary">Sign Out</button>
       <button id="deleteAccountBtn" class="danger">Delete Me</button>
     </div>
+    <div>
+      <button id="backBtn" style="padding:10px 16px; border-radius:10px; border:none; background:var(--accent); color:#fff; cursor:pointer;">
+        ← Back to Timetable
+    </div>
   </div>
+</button>
+
+  </div>
+  
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
@@ -53,6 +61,11 @@
       document.getElementById("signOutBtn").onclick = async () => {
         await sb.auth.signOut();
         location.href = LOGIN_URL;
+      };
+
+      document.getElementById("backBtn").onclick = () => {
+        // Go back to the main page
+        location.href = "Timetable.html"; // replace with your main page filename
       };
 
       // Change email
