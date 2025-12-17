@@ -41,7 +41,7 @@
       <h2>App Settings</h2>
 
       <div class="item">
-        <span>Block notes</span>
+        <span>Block Notes</span>
         <label class="switch">
           <input type="checkbox" id="notesToggle">
           <span class="slider"></span>
@@ -49,7 +49,7 @@
       </div>
 
       <div class="item">
-        <span>Goals section</span>
+        <span>Goals Section</span>
         <label class="switch">
           <input type="checkbox" id="goalsToggle">
           <span class="slider"></span>
@@ -106,67 +106,127 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  // Replace with your Supabase config
+  // Supabase config
   const SUPABASE_URL = "https://uvidyiedolvtsissfkel.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2aWR5aWVkb2x2dHNpc3Nma2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2OTIxMDgsImV4cCI6MjA3ODI2ODEwOH0.WF0WXdilYUooWm_VdUsrvXHdWPU26kvv9urYKOHHooQ";
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const LOGIN_URL = "https://worlddude.github.io/Timetable-app/Login";
 
-  // Go back to main page
-  document.getElementById("backBtn").onclick = () => location.href = "Timetable.html";
+  // Elements
+  const notesToggle = document.getElementById("notesToggle");
+  const goalsToggle = document.getElementById("goalsToggle");
+  const colorToggle = document.getElementById("colorblindToggle");
 
-  // Sign Out
+  // Go back
+  document.getElementById("backBtn").onclick = () =>
+    location.href = "Timetable.html";
+
+  // Sign out
   document.getElementById("signOutBtn").onclick = async () => {
     await sb.auth.signOut();
     location.href = LOGIN_URL;
   };
 
-  // Update Email
+  // Change email
   document.getElementById("changeEmailBtn").onclick = async () => {
     const email = document.getElementById("emailInput").value;
     if (!email) return alert("Enter a new email");
     const { error } = await sb.auth.updateUser({ email });
-    if (error) alert("Error: " + error.message);
+    if (error) alert(error.message);
     else alert("Email updated!");
   };
 
-  // Update Password
+  // Change password
   document.getElementById("changePasswordBtn").onclick = async () => {
     const password = document.getElementById("passwordInput").value;
     if (!password) return alert("Enter a new password");
     const { error } = await sb.auth.updateUser({ password });
-    if (error) alert("Error: " + error.message);
+    if (error) alert(error.message);
     else alert("Password updated!");
   };
 
-  // Delete Account
+  // Delete account (⚠️ needs backend later)
   document.getElementById("deleteBtn").onclick = async () => {
-    if (!confirm("Are you sure you want to delete your account? This cannot be undone.")) return;
-    const user = await sb.auth.getUser();
-    const { error } = await sb.auth.admin.deleteUser(user.data.user.id);
-    if (error) alert("Error: " + error.message);
-    else location.href = LOGIN_URL;
+    alert("Account deletion needs a secure backend. Not enabled yet.");
   };
 
-  // Toggle Goals (just local storage for now)
-  const goalsToggle = document.getElementById("goalsToggle");
-  goalsToggle.checked = localStorage.getItem("goalsEnabled") === "true";
-  goalsToggle.onchange = () => localStorage.setItem("goalsEnabled", goalsToggle.checked);
+  // -----------------------------
+  // USER SETTINGS (SYNCED)
+  // -----------------------------
 
-  // Toggle Colorblind (just local storage)
-  const colorToggle = document.getElementById("colorblindToggle");
-  colorToggle.checked = localStorage.getItem("colorblindMode") === "true";
-  colorToggle.onchange = () => localStorage.setItem("colorblindMode", colorToggle.checked);
+  async function initSettings() {
+    const { data: userData } = await sb.auth.getUser();
+    if (!userData?.user) {
+      location.href = LOGIN_URL;
+      return;
+    }
 
-  // Feedback submit (for now just logs)
+    const userId = userData.user.id;
+
+    // Ensure settings exist
+    const { data: existing } = await sb
+      .from("user_settings")
+      .select("*")
+      .eq("user_id", userId)
+      .single();
+
+    if (!existing) {
+      await sb.from("user_settings").insert({
+        user_id: userId,
+        block_notes: true,
+        goals_enabled: false,
+        colorblind_mode: false
+      });
+    }
+
+    // Load settings
+    const { data: settings } = await sb
+      .from("user_settings")
+      .select("*")
+      .eq("user_id", userId)
+      .single();
+
+    notesToggle.checked = settings.block_notes;
+    goalsToggle.checked = settings.goals_enabled;
+    colorToggle.checked = settings.colorblind_mode;
+
+    // Save changes
+    notesToggle.onchange = () =>
+      sb.from("user_settings")
+        .update({ block_notes: notesToggle.checked })
+        .eq("user_id", userId);
+
+    goalsToggle.onchange = () =>
+      sb.from("user_settings")
+        .update({ goals_enabled: goalsToggle.checked })
+        .eq("user_id", userId);
+
+    colorToggle.onchange = () =>
+      sb.from("user_settings")
+        .update({ colorblind_mode: colorToggle.checked })
+        .eq("user_id", userId);
+  }
+
+  initSettings();
+
+  // -----------------------------
+  // FEEDBACK
+  // -----------------------------
   document.getElementById("submitFeedbackBtn").onclick = async () => {
     const feedback = document.getElementById("feedbackText").value.trim();
-    if (!feedback) return alert("Please write some feedback first");
-    // Example: save feedback in a Supabase table called "feedback"
-    const { error } = await sb.from("feedback").insert([{ user_id: (await sb.auth.getUser()).data.user.id, feedback }]);
-    if (error) alert("Error submitting feedback: " + error.message);
-    else { alert("Feedback submitted!"); document.getElementById("feedbackText").value = ""; }
+    if (!feedback) return alert("Write feedback first");
+
+    const { data: userData } = await sb.auth.getUser();
+
+    const { error } = await sb.from("feedback").insert({
+      user_id: userData.user.id,
+      feedback
+    });
+
+    if (error) alert(error.message);
+    else {
+      alert("Feedback submitted!");
+      document.getElementById("feedbackText").value = "";
+    }
   };
 </script>
-</body>
-</html>
