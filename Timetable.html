@@ -368,14 +368,24 @@
       remoteSaveTimer = setTimeout(remoteSave, 800);
     }
 
+
+
+
+    
     // Save locally for THIS USER + queue remote sync
     function save(){
-      if (CURRENT_UID) {
-        saveLocal(CURRENT_UID, dayMap);
-      }
+      if (!CURRENT_UID) return;
+
+      saveLocal(CURRENT_UID, dayMap);
       queueRemoteSave();
     }
 
+
+
+
+
+
+    
     // -----------------
     // UTILITIES
     // -----------------
