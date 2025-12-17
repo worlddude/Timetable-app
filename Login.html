@@ -51,12 +51,12 @@
 
 <script>
 /* ===== Replace these ===== */
-const SUPABASE_URL      = "https://uvidyiedolvtsissfkel.supabase.co";   // ← replace
+const SUPABASE_URL      = "https://uvidyiedolvtsissfkel.sb.co";   // ← replace
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2aWR5aWVkb2x2dHNpc3Nma2VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2OTIxMDgsImV4cCI6MjA3ODI2ODEwOH0.WF0WXdilYUooWm_VdUsrvXHdWPU26kvv9urYKOHHooQ";                      // ← replace
 const APP_URL           = "https://worlddude.github.io/Timetable-app/Timetable"; // ← replace
 const LOGIN_URL         = "https://worlddude.github.io/Timetable-app/Login"; // <— REPLACE
 
-const sb = window.supabase.createClient(
+const sb = window.sb.createClient(
   SUPABASE_URL,
   SUPABASE_ANON_KEY
 );
@@ -70,12 +70,12 @@ function uiBusy(b){
 
 /* If already signed in, go to app */
 async function goIfSignedIn() {
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session } } = await sb.auth.getSession();
   if (session) location.href = APP_URL;
 }
 
 /* Supabase will parse #access_token on this page; when it sets session, redirect */
-supabase.auth.onAuthStateChange((event) => {
+sb.auth.onAuthStateChange((event) => {
   if (event === "SIGNED_IN") goIfSignedIn();
 });
 
@@ -107,7 +107,7 @@ $("signup").onclick = async () => {
   const { email, password } = getCreds();
   if (!email || !password) return msg("Enter email and password.");
   uiBusy(true); msg("Creating account…");
-  const { error } = await supabase.auth.signUp({
+  const { error } = await sb.auth.signUp({
     email, password,
     options: {
       // IMPORTANT: ensures the email confirmation link returns here (not a 404 root)
@@ -124,7 +124,7 @@ $("signin").onclick = async () => {
   const { email, password } = getCreds();
   if (!email || !password) return msg("Enter email and password.");
   uiBusy(true); msg("Signing in…");
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { error } = await sb.auth.signInWithPassword({ email, password });
   uiBusy(false);
   if (error) return msg(humanizeAuthError(error));
   msg("Signed in.");
