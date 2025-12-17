@@ -326,7 +326,7 @@
       const uid = CURRENT_UID;
       if (!uid) return false;
 
-      const { data, error } = await supabase
+      const { data, error } = await sb
         .from("timetable_blocks")
         .select("blocks")
         .eq("user_id", uid)
