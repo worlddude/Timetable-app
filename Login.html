@@ -132,6 +132,25 @@ $("signin").onclick = async () => {
   msg("Signed in.");
   goIfSignedIn();
 };
+
+/* Forgot password */
+$("forgot").onclick = async () => {
+  const email = $("email").value.trim();
+  if (!email) return msg("Enter your email to reset password.");
+  
+  uiBusy(true);
+  msg("Sending reset link…");
+
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: LOGIN_URL // Linket brugeren sendes til efter reset
+  });
+
+  uiBusy(false);
+  if (error) return msg(humanizeAuthError(error));
+
+  msg("Check your email for the password reset link.");
+};
+  
 </script>
 </body>
 </html>
